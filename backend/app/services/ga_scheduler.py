@@ -23,10 +23,19 @@ def _reserve_interval(intervals: List[Tuple[float, float]], start: float, end: f
     intervals.append((start, end))
 
 
-def _topological_order(components: List[ProductComponent]) -> List[ProductComponent]:
+def _build_dependency_graph(
+    components: List[ProductComponent],
+) -> Tuple[Dict[str, int], Dict[str, List[str]], Dict[str, List[str]]]:
+    """
+    Returns:
+      indeg: component_id -> indegree
+      graph: prereq_id -> list of components that depend on it
+      prereqs_of: component_id -> list of prereq ids
+    """
     by_id = {c.id: c for c in components}
     indeg = {c.id: 0 for c in components}
-    graph = {c.id: [] for c in components}
+    graph: Dict[str, List[str]] = {c.id: [] for c in components}
+    prereqs_of: Dict[str, List[str]] = {c.id: list(c.prerequisites) for c in components}
 
     for c in components:
         for pr in c.prerequisites:
@@ -35,15 +44,36 @@ def _topological_order(components: List[ProductComponent]) -> List[ProductCompon
             graph[pr].append(c.id)
             indeg[c.id] += 1
 
-    queue = [cid for cid, d in indeg.items() if d == 0]
-    out = []
-    while queue:
-        cid = queue.pop(0)
+    return indeg, graph, prereqs_of
+
+
+def _topological_order_priority(
+    components: List[ProductComponent],
+    rank: Dict[str, int],
+    unlock_score: Dict[str, int],
+) -> List[ProductComponent]:
+    """
+    Topological order that prefers:
+      1) higher unlock_score (components that unlock more downstream work)
+      2) earlier genome rank
+    among currently-available (indegree=0) nodes.
+    """
+    by_id = {c.id: c for c in components}
+    indeg, graph, _ = _build_dependency_graph(components)
+
+    ready = [cid for cid, d in indeg.items() if d == 0]
+    out: List[ProductComponent] = []
+
+    while ready:
+        # Prefer components that unlock more dependents; tie-break by GA rank.
+        ready.sort(key=lambda cid: (-int(unlock_score.get(cid, 0)), int(rank.get(cid, 10**9))))
+        cid = ready.pop(0)
+
         out.append(by_id[cid])
         for nxt in graph[cid]:
             indeg[nxt] -= 1
             if indeg[nxt] == 0:
-                queue.append(nxt)
+                ready.append(nxt)
 
     if len(out) != len(components):
         raise ValueError("Circular dependency detected in prerequisites.")
@@ -60,21 +90,6 @@ def _feasible_on_machine(comp: ProductComponent, machine: Machine, molds_by_id: 
         return False
     if comp.cycle_time_sec <= 0:
         return False
-    return True
-
-
-def _can_start_given_prereqs(
-    comp: ProductComponent,
-    completion_time: Dict[str, Tuple[int, float]],
-    day: int,
-    start_hour: float,
-) -> bool:
-    for pr in comp.prerequisites:
-        if pr not in completion_time:
-            return False
-        pr_day, pr_hour = completion_time[pr]
-        if (pr_day > day) or (pr_day == day and pr_hour > start_hour + EPS):
-            return False
     return True
 
 
@@ -136,15 +151,11 @@ def _next_mold_free_time_for_window(
     """
     Earliest t >= after_hour such that [t, t+window_hours] is fully free of mold usage,
     and t+window_hours <= cap.
-
-    This prevents "thrashy" waits to a time where the mold becomes free for a moment but not long enough
-    to complete the useful block (e.g. setup + at least 1 piece).
     """
     window_hours = float(window_hours)
     if window_hours <= 0:
         return after_hour if after_hour <= cap + EPS else None
 
-    # If already free for the whole required window, return immediately.
     if after_hour + window_hours <= cap + EPS and _interval_is_free(mold_intervals, after_hour, after_hour + window_hours):
         return after_hour
 
@@ -159,7 +170,6 @@ def _next_mold_free_time_for_window(
         if not overlaps:
             return t
 
-        # Jump to the latest end among all overlapping intervals, then retry
         t = max(e for (_s, e) in overlaps)
 
     return None
@@ -241,9 +251,15 @@ def _decode_v2(
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     molds_by_id = {m.id: m for m in molds}
 
-    topo = _topological_order(components)
+    # GA rank
     rank = {cid: i for i, cid in enumerate(genome)}
-    comp_order = sorted(topo, key=lambda c: rank.get(c.id, 10**9))
+
+    # Unlock score: how many components depend on this component (direct dependents).
+    _indeg, dep_graph, _pr = _build_dependency_graph(components)
+    unlock_score: Dict[str, int] = {c.id: len(dep_graph.get(c.id, [])) for c in components}
+
+    # Priority topological order (respects prereqs, but prefers "gate" components first)
+    comp_order = _topological_order_priority(components, rank=rank, unlock_score=unlock_score)
 
     remaining: Dict[str, int] = {c.id: int(c.quantity) for c in components}
     completion_time: Dict[str, Tuple[int, float]] = {}  # component_id -> (day, hour)
@@ -278,7 +294,6 @@ def _decode_v2(
             if not active:
                 break
 
-            # Pick next machine by earliest time (tie-break by machine list order)
             active.sort(key=lambda m: t[m.id])
             machine = active[0]
             mid = machine.id
@@ -293,7 +308,6 @@ def _decode_v2(
                 if remaining[comp.id] <= 0:
                     continue
 
-                # Ownership rule: once a component is started, only its owner can produce it
                 owner = component_owner.get(comp.id)
                 if owner is not None and owner != mid:
                     continue
@@ -301,7 +315,6 @@ def _decode_v2(
                 if not _feasible_on_machine(comp, machine, molds_by_id):
                     continue
 
-                # Initial setup is NOT free: None -> X implies a setup
                 need_mold_change = (current_mold[mid] != comp.mold_id)
                 need_color_change = (current_color[mid] != comp.color)
 
@@ -317,13 +330,11 @@ def _decode_v2(
                 if per_piece_h <= 0:
                     continue
 
-                # Allow pre-setup before prereqs are ready (but only if prereqs finish later TODAY)
                 prereq_ready = _next_ready_time_due_to_prereqs(comp, completion_time, day, start_after_setup)
                 if prereq_ready is None:
                     continue
 
                 produce_start = max(start_after_setup, prereq_ready)
-
                 if cap - produce_start < per_piece_h - EPS:
                     continue
 
@@ -331,8 +342,6 @@ def _decode_v2(
                 if intervals is None:
                     continue
 
-                # If we will have this mold mounted (possibly while waiting for prereqs),
-                # enforce mold exclusivity continuously until at least the first piece is produced.
                 if need_mold_change and float(mold_change_time_hours) > 0.0:
                     mold_hold_start = now + (max(0.0, float(color_change_time_hours)) if need_color_change else 0.0)
                 else:
@@ -341,24 +350,34 @@ def _decode_v2(
                 mold_hold_end_min = produce_start + per_piece_h
 
                 if not _interval_is_free(intervals, mold_hold_start, mold_hold_end_min):
-                    required_window = mold_hold_end_min - mold_hold_start  # setup/mount + wait + 1 piece
+                    required_window = mold_hold_end_min - mold_hold_start
                     nxt = _next_mold_free_time_for_window(intervals, mold_hold_start, required_window, cap)
                     if nxt is not None and nxt > now + EPS and nxt < cap - EPS:
                         wait_candidates_next_times.append(nxt)
                     continue
 
-                # preference (within ownership constraint)
                 sticky = 1 if (last_component[mid] is not None and comp.id == last_component[mid]) else 0
                 color_match = 1 if (current_color[mid] is not None and comp.color == current_color[mid]) else 0
                 mold_match = 1 if (current_mold[mid] is not None and comp.mold_id == current_mold[mid]) else 0
                 latest_start = comp.due_day - comp.lead_time_days
+                unlock = int(unlock_score.get(comp.id, 0))
 
+                # IMPORTANT CHANGE: unlock (prereq importance) is a major tie-breaker
                 candidates.append(
-                    (sticky, color_match, mold_match, latest_start, rank.get(comp.id, 10**9), comp, need_color_change, need_mold_change)
+                    (
+                        sticky,
+                        unlock,
+                        color_match,
+                        mold_match,
+                        latest_start,
+                        rank.get(comp.id, 10**9),
+                        comp,
+                        need_color_change,
+                        need_mold_change,
+                    )
                 )
 
             if not candidates:
-                # OPTION A WAIT
                 if wait_candidates_next_times:
                     t_next = min(wait_candidates_next_times)
                     if t_next > now + EPS:
@@ -381,22 +400,19 @@ def _decode_v2(
                 t[mid] = cap
                 continue
 
-            # stickiness first, then same color
+            # Keep strong stickiness (don't interrupt same component unnecessarily)
             if last_component[mid] is not None:
                 any_sticky = any(c[0] == 1 for c in candidates)
                 if any_sticky:
                     candidates = [c for c in candidates if c[0] == 1]
-            if current_color[mid] is not None:
-                any_same_color = any(c[1] == 1 for c in candidates)
-                if any_same_color:
-                    candidates = [c for c in candidates if c[1] == 1]
 
-            candidates.sort(key=lambda x: (-x[0], -x[1], -x[2], x[3], x[4]))
-            chosen = candidates[0][5]
-            need_color_change = candidates[0][6]
-            need_mold_change = candidates[0][7]
+            # Sort: sticky, unlock desc, then prefer same color/mold, then earlier latest_start, then GA rank
+            candidates.sort(key=lambda x: (-x[0], -x[1], -x[2], -x[3], x[4], x[5]))
+            chosen = candidates[0][6]
+            need_color_change = candidates[0][7]
+            need_mold_change = candidates[0][8]
 
-            # CHANGE_COLOR (even if time == 0, we still update the state)
+            # CHANGE_COLOR
             if need_color_change:
                 ch = max(0.0, float(color_change_time_hours))
                 if ch > 0.0:
@@ -422,7 +438,7 @@ def _decode_v2(
                     seq[mid] += 1
                 current_color[mid] = chosen.color
 
-            # CHANGE_MOLD (reserve mold during change if time > 0; update state even if time == 0)
+            # CHANGE_MOLD
             if need_mold_change:
                 mh = max(0.0, float(mold_change_time_hours))
                 if mh > 0.0:
@@ -474,7 +490,7 @@ def _decode_v2(
 
                 current_mold[mid] = chosen.mold_id
 
-            # After pre-setup, if prereqs still aren't ready, wait until they are (same-day only).
+            # WAIT for prereqs (same-day only)
             prereq_ready_now = _next_ready_time_due_to_prereqs(chosen, completion_time, day, now)
             if prereq_ready_now is None:
                 done[mid] = True
@@ -486,7 +502,6 @@ def _decode_v2(
                     t[mid] = cap
                     continue
 
-                # If mold is mounted, reserve it during the waiting time as well (mold exclusivity).
                 if current_mold[mid] is not None:
                     intervals = mold_busy[day].get(current_mold[mid])
                     if intervals is not None:
@@ -531,7 +546,7 @@ def _decode_v2(
                 t[mid] = now
                 seq[mid] += 1
 
-            # PRODUCE (partial-window safe: stop at next mold conflict boundary)
+            # PRODUCE
             per_piece_h = _piece_hours(chosen.cycle_time_sec)
             if per_piece_h <= 0:
                 done[mid] = True
@@ -561,7 +576,6 @@ def _decode_v2(
             end_prod = start_prod + used_h
 
             if not _interval_is_free(intervals, start_prod, end_prod):
-                # Wait until the mold is free for at least 1 piece, so we don't wake up too early.
                 nxt = _next_mold_free_time_for_window(intervals, start_prod, per_piece_h, cap)
                 if nxt is not None and nxt > start_prod + EPS and nxt < cap - EPS:
                     wait_h = nxt - start_prod
@@ -585,7 +599,6 @@ def _decode_v2(
 
             _reserve_interval(intervals, start_prod, end_prod)
 
-            # Ownership is set when the component is first started (in time-ordered decode)
             if chosen.id not in component_owner:
                 component_owner[chosen.id] = mid
 
