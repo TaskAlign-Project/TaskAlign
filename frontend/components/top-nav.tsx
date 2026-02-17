@@ -35,9 +35,9 @@ export function TopNav() {
       <div className="flex h-14 items-center gap-6 px-4 md:px-6">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary">
+          {/* <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary">
             <CalendarClock className="w-3.5 h-3.5 text-primary-foreground" />
-          </div>
+          </div> */}
           <span className="text-base font-semibold tracking-tight text-card-foreground">
             TaskAlign
           </span>
