@@ -36,10 +36,28 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Next.js build outputs
-.next/
-out/
+# Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
 dist/
+
+# env (frontend)
+frontend/.env.local
+frontend/.env.*.local
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.log
+
+# Next.js / Vercel
+.vercel/
+
+# TypeScript build info
+*.tsbuildinfo
 
 # env files
 .env
