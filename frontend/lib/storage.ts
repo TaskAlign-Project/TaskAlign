@@ -68,11 +68,15 @@ export function setPlanSetup(setup: PlanSetup): void {
 export const EXAMPLE_MACHINES: Machine[] = [
   { id: "M1", name: "S-IMM-01", group: "small", tonnage: 120, hours_per_day: 12, efficiency: 1.0 },
   { id: "M2", name: "S-IMM-02", group: "small", tonnage: 120, hours_per_day: 12, efficiency: 1.0 },
+  { id: "M3", name: "M-IMM-03", group: "medium", tonnage: 160, hours_per_day: 12, efficiency: 1.0 }
 ]
 
 export const EXAMPLE_MOLDS: Mold[] = [
   { id: "MO1", name: "Mold-1", group: "small", tonnage: 80 },
   { id: "MO2", name: "Mold-2", group: "small", tonnage: 80 },
+  { id: "MO3", name: "Mold-3", group: "medium", tonnage: 160 },
+  { id: "MO4", name: "Mold-4", group: "medium", tonnage: 160 }
+
 ]
 
 export const EXAMPLE_COMPONENTS: Component[] = [
@@ -109,6 +113,28 @@ export const EXAMPLE_COMPONENTS: Component[] = [
     lead_time_days: 1,
     prerequisites: [],
   },
+  {
+    id: "C4",
+    name: "Medium-Runner (Red)",
+    quantity: 800,
+    cycle_time_sec: 30,
+    mold_id: "MO3",
+    color: "blue",
+    due_day: 2,
+    lead_time_days: 1,
+    prerequisites: []
+  },
+  {
+    id: "C5",
+    name: "Medium-Top-Part (Red)",
+    quantity: 800,
+    cycle_time_sec: 30,
+    mold_id: "MO4",
+    color: "blue",
+    due_day: 2,
+    lead_time_days: 1,
+    prerequisites: []
+  }
 ]
 
 export const EXAMPLE_PLAN_SETUP: PlanSetup = {

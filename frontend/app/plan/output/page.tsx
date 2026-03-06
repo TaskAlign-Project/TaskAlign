@@ -361,7 +361,7 @@ function OutputContent({
               />
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
+          {/* <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Sort</Label>
             <Select value={sortMode} onValueChange={(v) => setSortMode(v as "day" | "machine")}>
               <SelectTrigger className="w-40 h-8 text-xs">
@@ -372,7 +372,7 @@ function OutputContent({
                 <SelectItem value="machine">Machine, then Day</SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </div> */}
           <p className="text-xs text-muted-foreground pb-1">
             {filtered.length} of {data.assignments.length} assignments
           </p>
