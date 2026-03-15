@@ -241,7 +241,6 @@ export default function PlanPage() {
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>✔ Continue from current production state</li>
               <li>✔ Recalculate remaining production</li>
-              <li>✔ Optimize completion efficiency</li>
             </ul>
 
             <div className="mt-4 flex items-center gap-2">
@@ -446,11 +445,6 @@ export default function PlanPage() {
             </Button>
           )}
 
-          {loading && (
-            <p className="text-sm text-muted-foreground">
-              Generating optimized production schedule...
-            </p>
-          )}
         </div>
         
 
