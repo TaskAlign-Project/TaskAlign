@@ -7,6 +7,7 @@ export interface Machine {
   tonnage: number
   hours_per_day: number
   efficiency: number
+  status: "available" | "unavailable" // machine status
 }
 
 export interface Mold {

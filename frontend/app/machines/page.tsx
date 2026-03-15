@@ -93,6 +93,7 @@ export default function MachinesPage() {
                 <TableHead className="text-right">Tonnage</TableHead>
                 <TableHead className="text-right">Hours/Day</TableHead>
                 <TableHead className="text-right">Efficiency</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -100,7 +101,7 @@ export default function MachinesPage() {
               {machines.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="text-center py-8 text-muted-foreground"
                   >
                     No machines yet. Add one to get started.
@@ -121,6 +122,12 @@ export default function MachinesPage() {
                       {m.hours_per_day}
                     </TableCell>
                     <TableCell className="text-right">{m.efficiency}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={(m.status ?? "available") === "available" ? "default" : "destructive"} className="capitalize"> {m.status ?? "available"}
+                        {/* 1) status null of undefined -> available 2) else -> destructive */}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button

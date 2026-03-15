@@ -35,6 +35,8 @@ const EMPTY: Machine = {
   tonnage: 0,
   hours_per_day: 0,
   efficiency: 1.0,
+  status: "available",
+
 }
 
 export function MachineFormDialog({
@@ -181,6 +183,25 @@ export function MachineFormDialog({
             {errors.efficiency && (
               <p className="text-xs text-destructive">{errors.efficiency}</p>
             )}
+          </div>
+
+          {/* Status */}
+          <div className="flex flex-col gap-1.5">
+            <Label>Status</Label>
+            <Select
+              value={form.status}
+              onValueChange={(v) =>
+                setForm({ ...form, status: v as Machine["status"] })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="available">Available</SelectItem>
+                <SelectItem value="unavailable">Unavailable</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <DialogFooter>
