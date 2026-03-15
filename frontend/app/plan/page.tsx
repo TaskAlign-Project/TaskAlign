@@ -29,6 +29,10 @@ export default function PlanPage() {
   const [result, setResult] = useState<ScheduleResponse | null>(null)
   const [counts, setCounts] = useState({ machines: 0, molds: 0, components: 0 })
 
+  type PlanMode = "fresh" | "resume"
+
+  const [mode, setMode] = useState<PlanMode>("fresh")
+
   useEffect(() => {
     setForm(getPlanSetup())
     setCounts({
@@ -63,6 +67,7 @@ export default function PlanPage() {
 
     try {
       const res = await runSchedule({
+        mode,
         month_days: form.month_days,
         mold_change_time_hours: form.mold_change_time_hours,
         color_change_time_hours: form.color_change_time_hours,
@@ -92,7 +97,7 @@ export default function PlanPage() {
         description="Configure parameters and run the scheduler"
       />
       <div className="flex-1 p-4 md:p-6 flex flex-col gap-6 overflow-y-auto">
-        {/* Data Status */}
+        {/* Data Status
         <div className="flex flex-wrap gap-3 text-sm">
           <span className="text-muted-foreground">
             Machines:{" "}
@@ -106,10 +111,23 @@ export default function PlanPage() {
             Components:{" "}
             <span className="font-medium text-card-foreground">{counts.components}</span>
           </span>
+        </div> */}
+        <div className="flex flex-wrap gap-4 text-sm">
+          <div className="bg-muted px-3 py-1.5 rounded-md">
+            Machines: <span className="font-semibold">{counts.machines}</span>
+          </div>
+
+          <div className="bg-muted px-3 py-1.5 rounded-md">
+            Molds: <span className="font-semibold">{counts.molds}</span>
+          </div>
+
+          <div className="bg-muted px-3 py-1.5 rounded-md">
+            Components: <span className="font-semibold">{counts.components}</span>
+          </div>
         </div>
 
         {/* Plan Setup Form */}
-        <Card className="max-w-lg">
+        {/* <Card className="max-w-lg">
           <CardHeader>
             <CardTitle className="text-base">Schedule Parameters</CardTitle>
           </CardHeader>
@@ -156,10 +174,232 @@ export default function PlanPage() {
               />
             </div>
           </CardContent>
+        </Card> */}
+
+        
+            <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Start Production Plan</CardTitle>
+        </CardHeader>
+
+        <CardContent className="grid gap-6 md:grid-cols-2">
+
+          {/* Fresh Start */}
+          <div
+            onClick={() => setMode("fresh")}
+            className={`cursor-pointer rounded-lg border p-5 transition
+            ${mode === "fresh"
+              ? "border-primary bg-primary/5"
+              : "hover:border-muted-foreground/40"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Play className="h-5 w-5" />
+              <h3 className="font-semibold">Fresh Start Mode</h3>
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-4">
+              Creates a new schedule for factories starting production from zero.
+              Ideal for new product lines or complete production resets.
+            </p>
+
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li>✔ Optimize machine allocation from scratch</li>
+              <li>✔ Set up new production targets</li>
+              <li>✔ Start with clean production slate</li>
+            </ul>
+
+            <div className="mt-4 flex items-center gap-2">
+              <input
+                type="radio"
+                checked={mode === "fresh"}
+                readOnly
+              />
+              <span className="text-sm font-medium">Select Fresh Start</span>
+            </div>
+          </div>
+
+          {/* Resume Mode */}
+          <div
+            onClick={() => setMode("resume")}
+            className={`cursor-pointer rounded-lg border p-5 transition
+            ${mode === "resume"
+              ? "border-primary bg-primary/5"
+              : "hover:border-muted-foreground/40"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Loader2 className="h-5 w-5" />
+              <h3 className="font-semibold">Production Resume Mode</h3>
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-4">
+              Input completed portions and the system recalculates the optimal
+              production plan to finish remaining work.
+            </p>
+
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li>✔ Continue from current production state</li>
+              <li>✔ Recalculate remaining production</li>
+              <li>✔ Optimize completion efficiency</li>
+            </ul>
+
+            <div className="mt-4 flex items-center gap-2">
+              <input
+                type="radio"
+                checked={mode === "resume"}
+                readOnly
+              />
+              <span className="text-sm font-medium">Select Resume Mode</span>
+            </div>
+          </div>
+
+        </CardContent>
+      </Card>
+
+      
+      
+        {/* Scheduler Parameters
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Scheduler Parameters</CardTitle>
+          </CardHeader>
+
+          <CardContent className="grid gap-6 md:grid-cols-3">
+            
+            <div className="space-y-2">
+              <Label htmlFor="month-days">Month Days</Label>
+              <Input
+                id="month-days"
+                type="number"
+                className="h-11 text-base"
+                value={form.month_days || ""}
+                onChange={(e) =>
+                  updateField("month_days", parseInt(e.target.value) || 0)
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mold-change">Mold Change Time (hours)</Label>
+              <Input
+                id="mold-change"
+                type="number"
+                step="0.1"
+                className="h-11 text-base"
+                value={form.mold_change_time_hours ?? ""}
+                onChange={(e) =>
+                  updateField(
+                    "mold_change_time_hours",
+                    parseFloat(e.target.value) || 0
+                  )
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="color-change">Color Change Time (hours)</Label>
+              <Input
+                id="color-change"
+                type="number"
+                step="0.1"
+                className="h-11 text-base"
+                value={form.color_change_time_hours ?? ""}
+                onChange={(e) =>
+                  updateField(
+                    "color_change_time_hours",
+                    parseFloat(e.target.value) || 0
+                  )
+                }
+              />
+            </div>
+
+          </CardContent>
+        </Card> */}
+
+        {mode === "fresh" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Schedule Parameters</CardTitle>
+          </CardHeader>
+
+          <CardContent className="grid gap-6 md:grid-cols-3">
+
+            <div className="space-y-2">
+              <Label>Month Days</Label>
+              <Input
+                type="number"
+                value={form.month_days || ""}
+                onChange={(e) =>
+                  updateField("month_days", parseInt(e.target.value) || 0)
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Mold Change Time (hours)</Label>
+              <Input
+                type="number"
+                step="0.1"
+                value={form.mold_change_time_hours ?? ""}
+                onChange={(e) =>
+                  updateField(
+                    "mold_change_time_hours",
+                    parseFloat(e.target.value) || 0
+                  )
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Color Change Time (hours)</Label>
+              <Input
+                type="number"
+                step="0.1"
+                value={form.color_change_time_hours ?? ""}
+                onChange={(e) =>
+                  updateField(
+                    "color_change_time_hours",
+                    parseFloat(e.target.value) || 0
+                  )
+                }
+              />
+            </div>
+
+          </CardContent>
         </Card>
+      )}
+
+      {mode === "resume" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resume Production State</CardTitle>
+          </CardHeader>
+
+          <CardContent className="grid gap-6 md:grid-cols-2">
+
+            <div className="space-y-2">
+              <Label>Completed Production (%)</Label>
+              <Input
+                type="number"
+                placeholder="Example: 40"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Remaining Orders</Label>
+              <Input
+                type="number"
+                placeholder="Example: 1200"
+              />
+            </div>
+
+          </CardContent>
+        </Card>
+      )}
 
         {/* Run Button */}
-        <div className="flex items-center gap-4">
+        {/* <div className="flex items-center gap-4">
           <Button onClick={handleRun} disabled={loading} size="lg">
             {loading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -181,7 +421,38 @@ export default function PlanPage() {
               This may take a moment...
             </p>
           )}
+        </div> */}
+        <div className="flex items-center gap-4 pt-2">
+          <Button
+            onClick={handleRun}
+            disabled={loading}
+            size="lg"
+            className="px-8 text-base"
+          >
+            {loading ? (
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-5 w-5" />
+            )}
+            {loading ? "Running Scheduler..." : "Run Scheduler"}
+          </Button>
+
+          {result && (
+            <Button variant="secondary" size="lg" asChild>
+              <Link href="/plan/output">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                View Output
+              </Link>
+            </Button>
+          )}
+
+          {loading && (
+            <p className="text-sm text-muted-foreground">
+              Generating optimized production schedule...
+            </p>
+          )}
         </div>
+        
 
         {/* Error */}
         {error && (

@@ -38,13 +38,18 @@ export interface PlanSetup {
 }
 
 // Schedule request payload
+export type PlanMode = "fresh" | "resume"
+
 export interface ScheduleRequest {
+  mode: PlanMode
   month_days: number
   mold_change_time_hours: number
   color_change_time_hours: number
+
   machines: Machine[]
   molds: Mold[]
   components: Component[]
+  
   pop_size: number
   n_generations: number
   mutation_rate: number

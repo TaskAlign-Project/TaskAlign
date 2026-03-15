@@ -6,6 +6,7 @@ const BASE_URL =
 export async function runSchedule(
   payload: ScheduleRequest
 ): Promise<ScheduleResponse> {
+
   const res = await fetch(`${BASE_URL}/schedule_v2`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
