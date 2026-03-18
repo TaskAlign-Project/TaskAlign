@@ -12,8 +12,10 @@ import {
   ChevronDown,
   ChevronRight,
   AlertTriangle,
+  History,
 } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
+import { NoPlanState } from "@/components/no-plan-state"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -42,15 +44,21 @@ import {
 } from "@/components/ui/collapsible"
 import { toast } from "sonner"
 import { GanttChart } from "@/components/schedule/GanttChart"
-import type { ScheduleResponse, Assignment } from "@/lib/types"
+import type { ScheduleResponse, Assignment, Plan, PlanRun } from "@/lib/types"
 import {
-  getStoredResult,
-  storeResult,
+  getActivePlan,
+  getCurrentRun,
+  setCurrentRun,
+  addDemoRunToActivePlan,
+  getPlanById,
+} from "@/lib/storage"
+import {
   groupByMachineThenDay,
   computeDailySummaries,
   downloadCSV,
   assignmentsToCSV,
   DEMO_RESULT,
+  storeResult,
 } from "@/lib/schedule-utils"
 
 // ---- Task-type styling ----
@@ -85,28 +93,71 @@ function fmt(n: number | undefined | null, decimals = 2): string {
 }
 
 export default function OutputPage() {
-  const [result, setResult] = useState<ScheduleResponse | null>(null)
+  const [plan, setPlan] = useState<Plan | null>(null)
+  const [currentRun, setCurrentRunState] = useState<PlanRun | null>(null)
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    setResult(getStoredResult())
+    const activePlan = getActivePlan()
+    setPlan(activePlan)
+    if (activePlan) {
+      const run = getCurrentRun(activePlan.id)
+      setCurrentRunState(run)
+      setSelectedRunId(run?.id ?? null)
+    }
     setLoaded(true)
   }, [])
 
+  function handleRunChange(runId: string) {
+    if (!plan) return
+    const run = plan.runs.find((r) => r.id === runId)
+    if (run) {
+      setCurrentRun(plan.id, runId)
+      setCurrentRunState(run)
+      setSelectedRunId(runId)
+      toast.success("Switched to selected run")
+    }
+  }
+
   function loadDemo() {
-    storeResult(DEMO_RESULT)
-    setResult(DEMO_RESULT)
-    toast.success("Demo result loaded")
+    const run = addDemoRunToActivePlan()
+    if (run && plan) {
+      // Refresh plan data
+      const updatedPlan = getPlanById(plan.id)
+      if (updatedPlan) {
+        setPlan(updatedPlan)
+        setCurrentRunState(run)
+        setSelectedRunId(run.id)
+      }
+      toast.success("Demo run added to current plan")
+    } else {
+      toast.error("Could not add demo run - no active plan")
+    }
   }
 
   if (!loaded) return null
 
-  if (!result) {
+  // No plan selected
+  if (!plan) {
     return (
       <div className="flex flex-col h-full">
         <AppHeader
           title="Schedule Output"
           description="Timeline-ready plan with setup, waiting, and production tasks"
+        />
+        <NoPlanState description="Select or create a plan to view schedule output." />
+      </div>
+    )
+  }
+
+  // Plan exists but no runs
+  if (!currentRun) {
+    return (
+      <div className="flex flex-col h-full">
+        <AppHeader
+          title="Schedule Output"
+          description={`Viewing output for "${plan.name}"`}
         />
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="flex flex-col items-center gap-4 text-center max-w-sm">
@@ -114,10 +165,10 @@ export default function OutputPage() {
               <FileQuestion className="h-7 w-7 text-muted-foreground" />
             </div>
             <h2 className="text-lg font-semibold text-card-foreground">
-              No schedule result found
+              No schedule runs yet
             </h2>
             <p className="text-sm text-muted-foreground">
-              Run the scheduler first or load a demo result to see the timeline output.
+              Run the scheduler first or load demo data to see the timeline output.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Button asChild>
@@ -137,19 +188,36 @@ export default function OutputPage() {
     )
   }
 
-  return <OutputContent data={result} onLoadDemo={loadDemo} />
+  return (
+    <OutputContent
+      plan={plan}
+      currentRun={currentRun}
+      selectedRunId={selectedRunId}
+      onRunChange={handleRunChange}
+      onLoadDemo={loadDemo}
+    />
+  )
 }
 
 // ---- Main content with filters and tabs ----
 function OutputContent({
-  data,
+  plan,
+  currentRun,
+  selectedRunId,
+  onRunChange,
   onLoadDemo,
 }: {
-  data: ScheduleResponse
+  plan: Plan
+  currentRun: PlanRun
+  selectedRunId: string | null
+  onRunChange: (runId: string) => void
   onLoadDemo: () => void
 }) {
-  const [filterDay, setFilterDay] = useState("all")
+  const data = currentRun.result
+  const [filterDayStart, setFilterDayStart] = useState("all")
+  const [filterDayEnd, setFilterDayEnd] = useState("all")
   const [filterMachine, setFilterMachine] = useState("all")
+  const [filterMachineGroup, setFilterMachineGroup] = useState("all")
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set(TASK_TYPES))
   const [searchQuery, setSearchQuery] = useState("")
   const [sortMode, setSortMode] = useState<"day" | "machine">("day")
@@ -158,17 +226,33 @@ function OutputContent({
   const unmetEntries = Object.entries(data.unmet ?? {})
   const totalUnmetQty = unmetEntries.reduce((s, [, v]) => s + v, 0)
   const days = useMemo(
-    () => [...new Set(data.assignments.map((a) => a.day))].sort((a, b) => a - b),
+    () => [...new Set(data.assignments.map((a) => a.day).filter((d) => d != null && d > 0))].sort((a, b) => a - b),
     [data.assignments]
   )
   const machines = useMemo(
     () =>
       [
         ...new Map(
-          data.assignments.map((a) => [a.machine_id, a.machine_name])
+          data.assignments
+            .filter((a) => a.machine_id && a.machine_id.trim() !== "")
+            .map((a) => [a.machine_id, a.machine_name])
         ).entries(),
       ].sort((a, b) => a[0].localeCompare(b[0])),
     [data.assignments]
+  )
+
+  // Machine groups from the plan's machines
+  const machineGroupMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of plan.machines) {
+      map.set(m.id, m.group)
+    }
+    return map
+  }, [plan.machines])
+
+  const machineGroups = useMemo(
+    () => [...new Set(plan.machines.map((m) => m.group).filter((g) => g && g.trim() !== ""))].sort(),
+    [plan.machines]
   )
 
   const toggleType = useCallback((type: string) => {
@@ -182,9 +266,24 @@ function OutputContent({
 
   const filtered = useMemo(() => {
     let arr = data.assignments
-    if (filterDay !== "all") arr = arr.filter((a) => a.day === Number(filterDay))
+    // Day range filter
+    if (filterDayStart !== "all") {
+      const start = Number(filterDayStart)
+      arr = arr.filter((a) => a.day >= start)
+    }
+    if (filterDayEnd !== "all") {
+      const end = Number(filterDayEnd)
+      arr = arr.filter((a) => a.day <= end)
+    }
+    // Machine filter
     if (filterMachine !== "all") arr = arr.filter((a) => a.machine_id === filterMachine)
+    // Machine group filter
+    if (filterMachineGroup !== "all") {
+      arr = arr.filter((a) => machineGroupMap.get(a.machine_id) === filterMachineGroup)
+    }
+    // Task type filter
     arr = arr.filter((a) => activeTypes.has(a.task_type))
+    // Search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       arr = arr.filter(
@@ -196,6 +295,7 @@ function OutputContent({
           a.machine_id.toLowerCase().includes(q)
       )
     }
+    // Sort
     if (sortMode === "day") {
       arr = [...arr].sort(
         (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour - b.start_hour
@@ -206,7 +306,7 @@ function OutputContent({
       )
     }
     return arr
-  }, [data.assignments, filterDay, filterMachine, activeTypes, searchQuery, sortMode])
+  }, [data.assignments, filterDayStart, filterDayEnd, filterMachine, filterMachineGroup, machineGroupMap, activeTypes, searchQuery, sortMode])
 
   const timelineGrouped = useMemo(
     () => groupByMachineThenDay(filtered),
@@ -224,19 +324,57 @@ function OutputContent({
     })
   }
 
+  const runIndex = plan.runs.findIndex((r) => r.id === selectedRunId)
+  const runNumber = runIndex >= 0 ? runIndex + 1 : plan.runs.length
+
   return (
     <div className="flex flex-col h-full">
       <AppHeader
         title="Schedule Output"
-        description="Timeline-ready plan with setup, waiting, and production tasks"
+        description={`Viewing output for "${plan.name}"`}
       />
       <div className="flex-1 p-4 md:p-6 flex flex-col gap-6 overflow-y-auto">
+        {/* Plan & run info */}
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge variant="secondary" className="text-sm">
+            {plan.name}
+          </Badge>
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <Select value={selectedRunId ?? ""} onValueChange={onRunChange}>
+              <SelectTrigger className="w-[180px] h-8">
+                <SelectValue placeholder="Select run" />
+              </SelectTrigger>
+              <SelectContent>
+                {plan.runs
+                  .filter((run) => run.id && run.id.trim() !== "")
+                  .map((run, idx) => (
+                    <SelectItem key={run.id} value={run.id}>
+                      Run #{idx + 1} - {new Date(run.created_at).toLocaleDateString()}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Badge variant="outline" className="text-xs">
+            {currentRun.mode === "fresh" ? "Fresh" : "Resume"}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {new Date(currentRun.created_at).toLocaleString()}
+          </span>
+        </div>
+
         {/* Top actions */}
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" size="sm" asChild>
             <Link href="/plan">
               <ArrowLeft className="mr-2 h-3.5 w-3.5" />
               Back to Setup Plan
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/plans/${plan.id}`}>
+              View Plan Details
             </Link>
           </Button>
           <Button
@@ -298,18 +436,52 @@ function OutputContent({
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Day</Label>
-            <Select value={filterDay} onValueChange={setFilterDay}>
+            <Label className="text-xs">Day Range</Label>
+            <div className="flex items-center gap-1">
+              <Select value={filterDayStart} onValueChange={setFilterDayStart}>
+                <SelectTrigger className="w-24 h-8 text-xs">
+                  <SelectValue placeholder="Start" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {days.map((d) => (
+                    <SelectItem key={d} value={String(d)}>
+                      Day {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">to</span>
+              <Select value={filterDayEnd} onValueChange={setFilterDayEnd}>
+                <SelectTrigger className="w-24 h-8 text-xs">
+                  <SelectValue placeholder="End" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {days.map((d) => (
+                    <SelectItem key={d} value={String(d)}>
+                      Day {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Machine Group</Label>
+            <Select value={filterMachineGroup} onValueChange={setFilterMachineGroup}>
               <SelectTrigger className="w-28 h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All days</SelectItem>
-                {days.map((d) => (
-                  <SelectItem key={d} value={String(d)}>
-                    Day {d}
-                  </SelectItem>
-                ))}
+                <SelectItem value="all">All groups</SelectItem>
+                {machineGroups.map((g) =>
+                  g ? (
+                    <SelectItem key={g} value={g}>
+                      {g.charAt(0).toUpperCase() + g.slice(1)}
+                    </SelectItem>
+                  ) : null
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -361,7 +533,7 @@ function OutputContent({
               />
             </div>
           </div>
-          {/* <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Sort</Label>
             <Select value={sortMode} onValueChange={(v) => setSortMode(v as "day" | "machine")}>
               <SelectTrigger className="w-40 h-8 text-xs">
@@ -372,7 +544,7 @@ function OutputContent({
                 <SelectItem value="machine">Machine, then Day</SelectItem>
               </SelectContent>
             </Select>
-          </div> */}
+          </div>
           <p className="text-xs text-muted-foreground pb-1">
             {filtered.length} of {data.assignments.length} assignments
           </p>
@@ -390,9 +562,9 @@ function OutputContent({
           {/* ---- Gantt chart view ---- */}
           <TabsContent value="gantt" className="mt-4">
             <GanttChart
-              assignments={data.assignments}
-              dayStart={filterDay !== "all" ? Number(filterDay) : undefined}
-              dayEnd={filterDay !== "all" ? Number(filterDay) : undefined}
+              assignments={filtered}
+              dayStart={filterDayStart !== "all" ? Number(filterDayStart) : undefined}
+              dayEnd={filterDayEnd !== "all" ? Number(filterDayEnd) : undefined}
             />
           </TabsContent>
 

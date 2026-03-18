@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
+import { NoPlanState } from "@/components/no-plan-state"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -14,6 +15,13 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -24,26 +32,31 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { MachineFormDialog } from "@/components/machine-form-dialog"
-import { getMachines, setMachines } from "@/lib/storage"
-import type { Machine } from "@/lib/types"
+import { getActivePlan, updateActivePlanMachines } from "@/lib/storage"
+import type { PlanMachine, MachineStatus, Plan } from "@/lib/types"
 import { toast } from "sonner"
 
 export default function MachinesPage() {
-  const [machines, setLocal] = useState<Machine[]>([])
+  const [plan, setPlan] = useState<Plan | null>(null)
+  const [machines, setLocal] = useState<PlanMachine[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<Machine | null>(null)
+  const [editing, setEditing] = useState<PlanMachine | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    setLocal(getMachines())
+    const activePlan = getActivePlan()
+    setPlan(activePlan)
+    setLocal(activePlan?.machines ?? [])
+    setLoaded(true)
   }, [])
 
-  function persist(next: Machine[]) {
+  function persist(next: PlanMachine[]) {
     setLocal(next)
-    setMachines(next)
+    updateActivePlanMachines(next)
   }
 
-  function handleSave(m: Machine) {
+  function handleSave(m: PlanMachine) {
     if (editing) {
       persist(machines.map((x) => (x.id === m.id ? m : x)))
       toast.success(`Machine "${m.name}" updated`)
@@ -61,13 +74,35 @@ export default function MachinesPage() {
     setDeleteTarget(null)
   }
 
+  function handleStatusChange(machineId: string, status: MachineStatus) {
+    const updated = machines.map((m) =>
+      m.id === machineId ? { ...m, status } : m
+    )
+    persist(updated)
+    toast.success(`Machine status updated to ${status}`)
+  }
+
+  if (!loaded) return null
+
+  if (!plan) {
+    return (
+      <div className="flex flex-col h-full">
+        <AppHeader
+          title="Machines"
+          description="Manage your injection molding machines"
+        />
+        <NoPlanState description="Select or create a plan to manage machines." />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-full">
       <AppHeader
         title="Machines"
-        description="Manage your injection molding machines"
+        description={`Managing machines for "${plan.name}"`}
       />
-      <div className="flex-1 p-4 md:p-6 flex flex-col gap-4">
+      <div className="flex-1 p-4 md:p-6 flex flex-col gap-4 overflow-y-auto">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             {machines.length} machine{machines.length !== 1 && "s"}
@@ -123,10 +158,30 @@ export default function MachinesPage() {
                     </TableCell>
                     <TableCell className="text-right">{m.efficiency}</TableCell>
                     <TableCell>
-                      <Badge
-                        variant={(m.status ?? "available") === "available" ? "default" : "destructive"} className="capitalize"> {m.status ?? "available"}
-                        {/* 1) status null of undefined -> available 2) else -> destructive */}
-                      </Badge>
+                      <Select
+                        value={m.status}
+                        onValueChange={(v) =>
+                          handleStatusChange(m.id, v as MachineStatus)
+                        }
+                      >
+                        <SelectTrigger className="w-[120px] h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="available">
+                            <span className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                              Available
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="unavailable">
+                            <span className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full bg-red-500" />
+                              Unavailable
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">

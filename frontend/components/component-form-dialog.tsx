@@ -36,6 +36,7 @@ const EMPTY: Component = {
   id: "",
   name: "",
   quantity: 0,
+  finished: 0,
   cycle_time_sec: 0,
   mold_id: "",
   color: "",
@@ -80,6 +81,7 @@ export function ComponentFormDialog({
     else if (!isEdit && existingIds.includes(form.id.trim()))
       e.id = "ID already exists"
     if (form.quantity <= 0) e.quantity = "Quantity must be > 0"
+    if ((form.finished ?? 0) < 0) e.finished = "Finished must be >= 0"
     if (form.cycle_time_sec <= 0)
       e.cycle_time_sec = "Cycle time must be > 0"
     if (form.due_day < 1) e.due_day = "Due day must be >= 1"
@@ -132,7 +134,7 @@ export function ComponentFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             {/* Quantity */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="comp-qty">Quantity</Label>
@@ -149,6 +151,25 @@ export function ComponentFormDialog({
               />
               {errors.quantity && (
                 <p className="text-xs text-destructive">{errors.quantity}</p>
+              )}
+            </div>
+
+            {/* Finished */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="comp-finished">Finished</Label>
+              <Input
+                id="comp-finished"
+                type="number"
+                value={form.finished ?? ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    finished: parseInt(e.target.value) || 0,
+                  })
+                }
+              />
+              {errors.finished && (
+                <p className="text-xs text-destructive">{errors.finished}</p>
               )}
             </div>
 

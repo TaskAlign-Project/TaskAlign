@@ -7,7 +7,6 @@ export interface Machine {
   tonnage: number
   hours_per_day: number
   efficiency: number
-  status: "available" | "unavailable" // machine status
 }
 
 export interface Mold {
@@ -21,6 +20,7 @@ export interface Component {
   id: string
   name: string
   quantity: number
+  finished: number
   cycle_time_sec: number
   mold_id: string
   color: string
@@ -39,18 +39,13 @@ export interface PlanSetup {
 }
 
 // Schedule request payload
-export type PlanMode = "fresh" | "resume"
-
 export interface ScheduleRequest {
-  mode: PlanMode
   month_days: number
   mold_change_time_hours: number
   color_change_time_hours: number
-
   machines: Machine[]
   molds: Mold[]
   components: Component[]
-  
   pop_size: number
   n_generations: number
   mutation_rate: number
@@ -82,4 +77,42 @@ export interface ScheduleResponse {
   assignments: Assignment[]
   unmet: Record<string, number>
   score: number
+}
+
+// ---- Plan-specific types ----
+
+export type MachineStatus = "available" | "unavailable"
+
+export type PlanMachine = Machine & { status: MachineStatus }
+
+export interface PlanRun {
+  id: string
+  created_at: string
+  mode: "fresh" | "resume"
+  note?: string
+  request_snapshot: {
+    month_days: number
+    mold_change_time_hours: number
+    color_change_time_hours: number
+    pop_size: number
+    n_generations: number
+    mutation_rate: number
+    machines: PlanMachine[]
+    molds: Mold[]
+    components: Component[]
+  }
+  result: ScheduleResponse
+}
+
+export interface Plan {
+  id: string
+  name: string
+  month_label?: string
+  created_at: string
+  updated_at: string
+  setup: PlanSetup
+  machines: PlanMachine[]
+  molds: Mold[]
+  components: Component[]
+  runs: PlanRun[]
 }

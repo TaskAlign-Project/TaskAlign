@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
+import { NoPlanState } from "@/components/no-plan-state"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -24,23 +25,28 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { MoldFormDialog } from "@/components/mold-form-dialog"
-import { getMolds, setMolds } from "@/lib/storage"
-import type { Mold } from "@/lib/types"
+import { getActivePlan, updateActivePlanMolds } from "@/lib/storage"
+import type { Mold, Plan } from "@/lib/types"
 import { toast } from "sonner"
 
 export default function MoldsPage() {
+  const [plan, setPlan] = useState<Plan | null>(null)
   const [molds, setLocal] = useState<Mold[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Mold | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    setLocal(getMolds())
+    const activePlan = getActivePlan()
+    setPlan(activePlan)
+    setLocal(activePlan?.molds ?? [])
+    setLoaded(true)
   }, [])
 
   function persist(next: Mold[]) {
     setLocal(next)
-    setMolds(next)
+    updateActivePlanMolds(next)
   }
 
   function handleSave(m: Mold) {
@@ -61,13 +67,27 @@ export default function MoldsPage() {
     setDeleteTarget(null)
   }
 
+  if (!loaded) return null
+
+  if (!plan) {
+    return (
+      <div className="flex flex-col h-full">
+        <AppHeader
+          title="Molds"
+          description="Manage injection molds for your machines"
+        />
+        <NoPlanState description="Select or create a plan to manage molds." />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-full">
       <AppHeader
         title="Molds"
-        description="Manage injection molds for your machines"
+        description={`Managing molds for "${plan.name}"`}
       />
-      <div className="flex-1 p-4 md:p-6 flex flex-col gap-4">
+      <div className="flex-1 p-4 md:p-6 flex flex-col gap-4 overflow-y-auto">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             {molds.length} mold{molds.length !== 1 && "s"}

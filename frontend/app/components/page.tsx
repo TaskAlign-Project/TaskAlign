@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
+import { NoPlanState } from "@/components/no-plan-state"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -24,29 +25,28 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { ComponentFormDialog } from "@/components/component-form-dialog"
-import {
-  getComponents,
-  setComponents,
-  getMolds,
-} from "@/lib/storage"
-import type { Component, Mold } from "@/lib/types"
+import { getActivePlan, updateActivePlanComponents } from "@/lib/storage"
+import type { Component, Plan } from "@/lib/types"
 import { toast } from "sonner"
 
 export default function ComponentsPage() {
+  const [plan, setPlan] = useState<Plan | null>(null)
   const [components, setLocal] = useState<Component[]>([])
-  const [molds, setMoldsLocal] = useState<Mold[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Component | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    setLocal(getComponents())
-    setMoldsLocal(getMolds())
+    const activePlan = getActivePlan()
+    setPlan(activePlan)
+    setLocal(activePlan?.components ?? [])
+    setLoaded(true)
   }, [])
 
   function persist(next: Component[]) {
     setLocal(next)
-    setComponents(next)
+    updateActivePlanComponents(next)
   }
 
   function handleSave(c: Component) {
@@ -67,13 +67,27 @@ export default function ComponentsPage() {
     setDeleteTarget(null)
   }
 
+  if (!loaded) return null
+
+  if (!plan) {
+    return (
+      <div className="flex flex-col h-full">
+        <AppHeader
+          title="Components"
+          description="Manage parts to be produced"
+        />
+        <NoPlanState description="Select or create a plan to manage components." />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-full">
       <AppHeader
         title="Components"
-        description="Manage parts to be produced"
+        description={`Managing components for "${plan.name}"`}
       />
-      <div className="flex-1 p-4 md:p-6 flex flex-col gap-4">
+      <div className="flex-1 p-4 md:p-6 flex flex-col gap-4 overflow-y-auto">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             {components.length} component{components.length !== 1 && "s"}
@@ -96,6 +110,7 @@ export default function ComponentsPage() {
                 <TableHead>ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead className="text-right">Qty</TableHead>
+                <TableHead className="text-right">Finished</TableHead>
                 <TableHead className="text-right">Cycle (s)</TableHead>
                 <TableHead>Mold</TableHead>
                 <TableHead>Color</TableHead>
@@ -109,7 +124,7 @@ export default function ComponentsPage() {
               {components.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={11}
                     className="text-center py-8 text-muted-foreground"
                   >
                     No components yet. Add one to get started.
@@ -122,6 +137,9 @@ export default function ComponentsPage() {
                     <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell className="text-right">
                       {c.quantity.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {(c.finished ?? 0).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">
                       {c.cycle_time_sec}
@@ -190,7 +208,7 @@ export default function ComponentsPage() {
         component={editing}
         existingIds={components.map((c) => c.id)}
         allComponents={components}
-        molds={molds}
+        molds={plan.molds}
         onSave={handleSave}
       />
 
