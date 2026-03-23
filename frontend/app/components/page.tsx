@@ -259,7 +259,7 @@ export default function ComponentsPage() {
                 <TableHead>Due Date</TableHead>
                 <TableHead className="text-right">Lead</TableHead>
                 <TableHead>Dependencies</TableHead>
-                <TableHead>Order Codes</TableHead>
+                <TableHead>Order Code</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -341,30 +341,13 @@ export default function ComponentsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {(!c.order_codes || c.order_codes.length === 0) ? (
-                            <span className="text-xs text-muted-foreground">
-                              None
-                            </span>
-                          ) : (
-                            <>
-                              {c.order_codes.slice(0, 2).map((code) => (
-                                <Badge
-                                  key={code}
-                                  variant="outline"
-                                  className="text-xs font-mono"
-                                >
-                                  {code}
-                                </Badge>
-                              ))}
-                              {c.order_codes.length > 2 && (
-                                <Badge variant="secondary" className="text-xs">
-                                  +{c.order_codes.length - 2} more
-                                </Badge>
-                              )}
-                            </>
-                          )}
-                        </div>
+                        {c.order_code ? (
+                          <Badge variant="outline" className="text-xs font-mono">
+                            {c.order_code}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">None</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">

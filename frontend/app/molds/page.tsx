@@ -224,7 +224,7 @@ export default function MoldsPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Group</TableHead>
                 <TableHead className="text-right">Tonnage</TableHead>
-                <TableHead>Component IDs</TableHead>
+                <TableHead>Component ID</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -252,30 +252,13 @@ export default function MoldsPage() {
                     </TableCell>
                     <TableCell className="text-right">{m.tonnage}</TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {(!m.component_ids || m.component_ids.length === 0) ? (
-                          <span className="text-xs text-muted-foreground">
-                            None
-                          </span>
-                        ) : (
-                          <>
-                            {m.component_ids.slice(0, 2).map((c) => (
-                              <Badge
-                                key={c}
-                                variant="outline"
-                                className="text-xs font-mono"
-                              >
-                                {c}
-                              </Badge>
-                            ))}
-                            {m.component_ids.length > 2 && (
-                              <Badge variant="secondary" className="text-xs">
-                                +{m.component_ids.length - 2} more
-                              </Badge>
-                            )}
-                          </>
-                        )}
-                      </div>
+                      {m.component_id ? (
+                        <Badge variant="outline" className="text-xs font-mono">
+                          {m.component_id}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">None</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">

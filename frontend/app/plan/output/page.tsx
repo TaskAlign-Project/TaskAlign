@@ -313,9 +313,10 @@ function OutputContent({
     () => groupByMachineThenDay(filtered),
     [filtered]
   )
+  // Daily summaries should also use filtered data
   const { perMachineDay, perDay } = useMemo(
-    () => computeDailySummaries(data.assignments),
-    [data.assignments]
+    () => computeDailySummaries(filtered),
+    [filtered]
   )
 
   function handleCopyCSV() {

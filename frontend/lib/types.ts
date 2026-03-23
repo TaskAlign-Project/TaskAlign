@@ -14,7 +14,7 @@ export interface Mold {
   name: string
   group: "small" | "medium" | "large"
   tonnage: number
-  component_ids: string[] // Components that use this mold
+  component_id: string // Single component that uses this mold
 }
 
 export type DependencyMode = "wait" | "parallel"
@@ -33,7 +33,7 @@ export interface Component {
   prerequisites: string[]
   dependency_mode: DependencyMode
   transfer_time_minutes: number
-  order_codes: string[] // Order codes associated with this component
+  order_code: string // Single order code - each order code is a separate component entry
 }
 
 export interface PlanSetup {

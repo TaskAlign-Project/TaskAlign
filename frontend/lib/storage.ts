@@ -90,18 +90,21 @@ export const EXAMPLE_MACHINES: PlanMachine[] = [
 ]
 
 export const EXAMPLE_MOLDS: Mold[] = [
-  { id: "MLD1", name: "Cap Mold", group: "small", tonnage: 60, component_ids: ["C1", "C5"] },
-  { id: "MLD2", name: "Body Mold", group: "small", tonnage: 80, component_ids: ["C2"] },
-  { id: "MLD3", name: "Housing Mold", group: "medium", tonnage: 180, component_ids: ["C3"] },
-  { id: "MLD4", name: "Panel Mold", group: "large", tonnage: 400, component_ids: ["C4"] },
+  { id: "MLD1", name: "Cap Mold", group: "small", tonnage: 60, component_id: "C1" },
+  { id: "MLD2", name: "Body Mold", group: "small", tonnage: 80, component_id: "C2" },
+  { id: "MLD3", name: "Housing Mold", group: "medium", tonnage: 180, component_id: "C3" },
+  { id: "MLD4", name: "Panel Mold", group: "large", tonnage: 400, component_id: "C4" },
 ]
 
 export const EXAMPLE_COMPONENTS: Component[] = [
-  { id: "C1", name: "Bottle Cap", quantity: 10000, finished: 0, cycle_time_sec: 12, mold_id: "MLD1", color: "white", start_date: "2026-01-01", due_date: "2026-01-10", lead_time_days: 2, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_codes: ["ORD-001", "ORD-002"] },
-  { id: "C2", name: "Bottle Body", quantity: 10000, finished: 0, cycle_time_sec: 25, mold_id: "MLD2", color: "white", start_date: "2026-01-03", due_date: "2026-01-12", lead_time_days: 3, prerequisites: ["C1"], dependency_mode: "wait", transfer_time_minutes: 30, order_codes: ["ORD-001"] },
-  { id: "C3", name: "Housing Shell", quantity: 5000, finished: 5000, cycle_time_sec: 35, mold_id: "MLD3", color: "black", start_date: "2026-01-01", due_date: "2026-01-15", lead_time_days: 4, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_codes: ["ORD-003"] },
-  { id: "C4", name: "Dashboard Panel", quantity: 2000, finished: 500, cycle_time_sec: 60, mold_id: "MLD4", color: "gray", start_date: "2026-01-05", due_date: "2026-01-20", lead_time_days: 5, prerequisites: ["C3"], dependency_mode: "parallel", transfer_time_minutes: 60, order_codes: ["ORD-003", "ORD-004"] },
-  { id: "C5", name: "Bottle Cap (Blue)", quantity: 8000, finished: 0, cycle_time_sec: 12, mold_id: "MLD1", color: "blue", start_date: "2026-01-01", due_date: "2026-01-18", lead_time_days: 2, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_codes: [] },
+  // Each order code is a separate component entry with its own start/due dates
+  { id: "C1-ORD001", name: "Bottle Cap", quantity: 5000, finished: 0, cycle_time_sec: 12, mold_id: "MLD1", color: "white", start_date: "2026-01-01", due_date: "2026-01-08", lead_time_days: 2, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-001" },
+  { id: "C1-ORD002", name: "Bottle Cap", quantity: 5000, finished: 0, cycle_time_sec: 12, mold_id: "MLD1", color: "white", start_date: "2026-01-05", due_date: "2026-01-12", lead_time_days: 2, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-002" },
+  { id: "C2-ORD001", name: "Bottle Body", quantity: 10000, finished: 0, cycle_time_sec: 25, mold_id: "MLD2", color: "white", start_date: "2026-01-03", due_date: "2026-01-12", lead_time_days: 3, prerequisites: ["C1-ORD001"], dependency_mode: "wait", transfer_time_minutes: 30, order_code: "ORD-001" },
+  { id: "C3-ORD003", name: "Housing Shell", quantity: 5000, finished: 5000, cycle_time_sec: 35, mold_id: "MLD3", color: "black", start_date: "2026-01-01", due_date: "2026-01-15", lead_time_days: 4, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-003" },
+  { id: "C4-ORD003", name: "Dashboard Panel", quantity: 1000, finished: 500, cycle_time_sec: 60, mold_id: "MLD4", color: "gray", start_date: "2026-01-05", due_date: "2026-01-18", lead_time_days: 5, prerequisites: ["C3-ORD003"], dependency_mode: "parallel", transfer_time_minutes: 60, order_code: "ORD-003" },
+  { id: "C4-ORD004", name: "Dashboard Panel", quantity: 1000, finished: 0, cycle_time_sec: 60, mold_id: "MLD4", color: "gray", start_date: "2026-01-10", due_date: "2026-01-22", lead_time_days: 5, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-004" },
+  { id: "C5", name: "Bottle Cap (Blue)", quantity: 8000, finished: 0, cycle_time_sec: 12, mold_id: "MLD1", color: "blue", start_date: "2026-01-01", due_date: "2026-01-18", lead_time_days: 2, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "" },
 ]
 
 export const EXAMPLE_PLAN_SETUP: PlanSetup = {

@@ -22,7 +22,6 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { X } from "lucide-react"
 import type { Component, Mold, DependencyMode } from "@/lib/types"
 
 interface Props {
@@ -49,7 +48,7 @@ const EMPTY: Component = {
   prerequisites: [],
   dependency_mode: "wait",
   transfer_time_minutes: 0,
-  order_codes: [],
+  order_code: "",
 }
 
 export function ComponentFormDialog({
@@ -65,8 +64,6 @@ export function ComponentFormDialog({
   const [form, setForm] = useState<Component>(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const [newOrderCode, setNewOrderCode] = useState("")
-
   useEffect(() => {
     if (component) {
       setForm({
@@ -75,32 +72,13 @@ export function ComponentFormDialog({
         due_date: component.due_date ?? new Date().toISOString().split("T")[0],
         dependency_mode: component.dependency_mode ?? "wait",
         transfer_time_minutes: component.transfer_time_minutes ?? 0,
-        order_codes: component.order_codes ?? [],
+        order_code: component.order_code ?? "",
       })
     } else {
       setForm(EMPTY)
     }
     setErrors({})
-    setNewOrderCode("")
   }, [component, open])
-
-  function addOrderCode() {
-    const code = newOrderCode.trim()
-    if (code && !form.order_codes.includes(code)) {
-      setForm((prev) => ({
-        ...prev,
-        order_codes: [...prev.order_codes, code],
-      }))
-      setNewOrderCode("")
-    }
-  }
-
-  function removeOrderCode(code: string) {
-    setForm((prev) => ({
-      ...prev,
-      order_codes: prev.order_codes.filter((c) => c !== code),
-    }))
-  }
 
   // Available prerequisites: all components except self
   const availablePrereqs = allComponents.filter((c) => c.id !== form.id)
@@ -369,54 +347,18 @@ export function ComponentFormDialog({
             )}
           </div>
 
-          {/* Order Codes */}
+          {/* Order Code (single) */}
           <div className="flex flex-col gap-1.5">
-            <Label>Order Codes</Label>
+            <Label htmlFor="comp-order-code">Order Code</Label>
             <p className="text-xs text-muted-foreground">
-              Add order codes associated with this component.
+              Each order code should be a separate component entry with its own dates.
             </p>
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter order code..."
-                value={newOrderCode}
-                onChange={(e) => setNewOrderCode(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    addOrderCode()
-                  }
-                }}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={addOrderCode}
-                disabled={!newOrderCode.trim()}
-              >
-                Add
-              </Button>
-            </div>
-            {form.order_codes.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {form.order_codes.map((code) => (
-                  <Badge
-                    key={code}
-                    variant="outline"
-                    className="text-xs font-mono flex items-center gap-1"
-                  >
-                    {code}
-                    <button
-                      type="button"
-                      onClick={() => removeOrderCode(code)}
-                      className="ml-0.5 hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            )}
+            <Input
+              id="comp-order-code"
+              placeholder="e.g., ORD-001"
+              value={form.order_code}
+              onChange={(e) => setForm({ ...form, order_code: e.target.value })}
+            />
           </div>
 
           {/* Dependency Behavior - only shown when there are prerequisites */}

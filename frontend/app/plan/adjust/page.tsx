@@ -687,12 +687,13 @@ function AdjustContent({
               </CardHeader>
               <CardContent className="flex-1 overflow-y-auto">
                 {selectedTask ? (
-                  <TaskInspector 
-                    task={selectedTask} 
-                    startDate={startDate}
-                    machines={plan.machines}
-                    days={days}
-                    onUpdate={(updates) => updateTask(selectedTask._originalIndex, updates)}
+ <TaskInspector
+  task={selectedTask}
+  startDate={startDate}
+  machines={plan.machines}
+  components={plan.components}
+  days={days}
+  onUpdate={(updates) => updateTask(selectedTask._originalIndex, updates)}
                     onReset={() => handleResetTask(selectedTask._originalIndex)}
                     hasError={selectedTaskHasError}
                   />
@@ -775,7 +776,7 @@ function AdjustContent({
                   ))}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-2">
-                  Drag any task to adjust time/machine, or use the form fields for precise editing. 
+                  Drag any task to adjust time/machine, or use the form fields for precise editing. Tasks snap to 15-min intervals.
                 </p>
               </CardContent>
             </Card>
@@ -1008,6 +1009,7 @@ function TaskInspector({
   task, 
   startDate,
   machines,
+  components,
   days,
   onUpdate,
   onReset,
@@ -1016,6 +1018,7 @@ function TaskInspector({
   task: EditableAssignment
   startDate: string
   machines: PlanMachine[]
+  components: { id: string; cycle_time_sec: number }[]
   days: number[]
   onUpdate: (updates: Partial<EditableAssignment>) => void
   onReset: () => void
@@ -1094,35 +1097,28 @@ function TaskInspector({
     })
   }
 
-  // Apply end time change
-  function handleEndTimeChange(newEndTime: string) {
-    setEndTimeValue(newEndTime)
-    const newEndHour = parseTimeToHour(newEndTime)
-    const currentStartHour = parseTimeToHour(startTimeValue)
-    
-    // Validate
-    if (newEndHour <= currentStartHour) {
-      setLocalError("End time must be after start time")
-      return
-    }
-    if (newEndHour > 24) {
-      setLocalError("End time cannot exceed 24:00")
-      return
-    }
-    
-    setLocalError(null)
-    onUpdate({ 
-      end_hour: newEndHour,
-      used_hours: newEndHour - currentStartHour,
-    })
-  }
-
-  // Apply produced qty change
+  // Apply produced qty change - recalculates duration based on cycle time
   function handleProducedQtyChange(value: string) {
     setProducedQtyValue(value)
     const qty = parseInt(value) || 0
     if (qty >= 0) {
-      onUpdate({ produced_qty: qty })
+      // Find the component's cycle time to recalculate duration
+      const comp = components.find(c => c.id === task.component_id)
+      if (comp && comp.cycle_time_sec > 0) {
+        // Calculate new duration in hours: qty * cycle_time_sec / 3600
+        const newDurationHours = (qty * comp.cycle_time_sec) / 3600
+        const newEndHour = Math.min(24, task.start_hour + newDurationHours)
+        
+        setEndTimeValue(formatTimeHHMM(newEndHour))
+        onUpdate({ 
+          produced_qty: qty,
+          end_hour: newEndHour,
+          used_hours: newEndHour - task.start_hour,
+        })
+      } else {
+        // No cycle time available, just update qty
+        onUpdate({ produced_qty: qty })
+      }
     }
   }
 
@@ -1174,7 +1170,7 @@ function TaskInspector({
           </Select>
         </div>
 
-        {/* Time range */}
+        {/* Time range - only Start Time is editable */}
         <div className="grid grid-cols-2 gap-2">
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Start Time</Label>
@@ -1191,10 +1187,11 @@ function TaskInspector({
             <Input
               type="time"
               value={endTimeValue}
-              onChange={(e) => handleEndTimeChange(e.target.value)}
-              className="h-8 text-xs font-mono"
-              step="900"
+              readOnly
+              disabled
+              className="h-8 text-xs font-mono bg-muted"
             />
+            <p className="text-[10px] text-muted-foreground">Auto-calculated</p>
           </div>
         </div>
 
@@ -1217,6 +1214,9 @@ function TaskInspector({
               className="h-8 text-xs font-mono"
               min={0}
             />
+            <p className="text-[10px] text-muted-foreground">
+              Changing qty will recalculate end time based on cycle time
+            </p>
           </div>
         )}
 

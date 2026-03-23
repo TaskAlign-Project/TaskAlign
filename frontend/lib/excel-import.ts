@@ -17,7 +17,7 @@ export const MOLD_COLUMNS = [
   "name",
   "group",
   "tonnage",
-  "component_ids",
+  "component_id",
 ] as const
 
 export const COMPONENT_COLUMNS = [
@@ -34,7 +34,7 @@ export const COMPONENT_COLUMNS = [
   "prerequisites",
   "dependency_mode",
   "transfer_time_minutes",
-  "order_codes",
+  "order_code",
 ] as const
 
 export type ImportType = "machines" | "molds" | "components"
@@ -207,7 +207,7 @@ export function parseMoldsFromExcel(file: File): Promise<ImportResult<Mold>> {
           const name = String(normalizedRow.name ?? id).trim()
           const group = parseGroup(normalizedRow.group)
           const tonnage = Number(normalizedRow.tonnage) || 0
-          const component_ids = parseArrayField(normalizedRow.component_ids ?? normalizedRow.componentids ?? normalizedRow.components)
+          const component_id = String(normalizedRow.component_id ?? normalizedRow.componentid ?? normalizedRow.component ?? "").trim()
           
           if (tonnage <= 0) {
             warnings.push(`Row ${rowNum}: Tonnage is 0 or negative`)
@@ -218,7 +218,7 @@ export function parseMoldsFromExcel(file: File): Promise<ImportResult<Mold>> {
             name,
             group,
             tonnage,
-            component_ids,
+            component_id,
           })
         })
 
@@ -285,7 +285,7 @@ export function parseComponentsFromExcel(file: File): Promise<ImportResult<Compo
           const prerequisites = parseArrayField(normalizedRow.prerequisites ?? normalizedRow.deps ?? normalizedRow.dependencies)
           const dependency_mode = parseDependencyMode(normalizedRow.dependency_mode ?? normalizedRow.dependencymode ?? normalizedRow.dep_mode)
           const transfer_time_minutes = Number(normalizedRow.transfer_time_minutes ?? normalizedRow.transfertimeminutes ?? normalizedRow.transfer_time ?? 0)
-          const order_codes = parseArrayField(normalizedRow.order_codes ?? normalizedRow.ordercodes ?? normalizedRow.orders)
+          const order_code = String(normalizedRow.order_code ?? normalizedRow.ordercode ?? normalizedRow.order ?? "").trim()
           
           if (quantity <= 0) {
             warnings.push(`Row ${rowNum}: Quantity is 0 or negative`)
@@ -311,7 +311,7 @@ export function parseComponentsFromExcel(file: File): Promise<ImportResult<Compo
             prerequisites,
             dependency_mode,
             transfer_time_minutes,
-            order_codes,
+            order_code,
           })
         })
 
@@ -353,15 +353,15 @@ export function generateTemplate(type: ImportType): void {
       break
     case "molds":
       ws = XLSX.utils.json_to_sheet([
-        { id: "MLD1", name: "Mold 1", group: "small", tonnage: 60, component_ids: "C1,C2" },
-        { id: "MLD2", name: "Mold 2", group: "medium", tonnage: 150, component_ids: "C3" },
+        { id: "MLD1", name: "Mold 1", group: "small", tonnage: 60, component_id: "C1" },
+        { id: "MLD2", name: "Mold 2", group: "medium", tonnage: 150, component_id: "C2" },
       ])
       filename = "molds_template.xlsx"
       break
     case "components":
       ws = XLSX.utils.json_to_sheet([
-        { id: "C1", name: "Part A", quantity: 1000, finished: 0, cycle_time_sec: 30, mold_id: "MLD1", color: "white", start_date: "2026-01-01", due_date: "2026-01-10", lead_time_days: 2, prerequisites: "", dependency_mode: "wait", transfer_time_minutes: 0, order_codes: "ORD-001" },
-        { id: "C2", name: "Part B", quantity: 500, finished: 0, cycle_time_sec: 45, mold_id: "MLD1", color: "blue", start_date: "2026-01-05", due_date: "2026-01-15", lead_time_days: 3, prerequisites: "C1", dependency_mode: "wait", transfer_time_minutes: 30, order_codes: "ORD-001,ORD-002" },
+        { id: "C1-ORD001", name: "Part A", quantity: 1000, finished: 0, cycle_time_sec: 30, mold_id: "MLD1", color: "white", start_date: "2026-01-01", due_date: "2026-01-10", lead_time_days: 2, prerequisites: "", dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-001" },
+        { id: "C1-ORD002", name: "Part A", quantity: 500, finished: 0, cycle_time_sec: 30, mold_id: "MLD1", color: "white", start_date: "2026-01-05", due_date: "2026-01-15", lead_time_days: 2, prerequisites: "", dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-002" },
       ])
       filename = "components_template.xlsx"
       break
