@@ -108,7 +108,8 @@ export default function DashboardPage() {
                 Get started quickly
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Load example machines, molds, and components.
+                Load example machines, molds, and components to try the
+                scheduler right away.
               </p>
             </div>
             <Button variant="secondary" onClick={handleLoadExample}>

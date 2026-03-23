@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState, useCallback, useRef } from "react"
+import { useMemo, useState, useCallback, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import type { Assignment } from "@/lib/types"
 import {
@@ -11,7 +12,8 @@ import {
   barLabel,
   generateDayColumns,
   generateHourTicks,
-  toAbsoluteHour,
+  formatHourAMPM,
+  formatDayAsDate,
 } from "@/lib/gantt"
 import { Badge } from "@/components/ui/badge"
 
@@ -47,10 +49,15 @@ const GANTT_COLORS: Record<
     border: "border-sky-600",
     text: "text-sky-50",
   },
+  TRANSFER: {
+    bg: "bg-purple-500",
+    border: "border-purple-600",
+    text: "text-purple-50",
+  },
 }
 
 const ROW_HEIGHT = 44
-const HEADER_HEIGHT = 52
+const HEADER_HEIGHT = 28
 const LABEL_WIDTH = 180
 
 interface GanttChartProps {
@@ -58,17 +65,24 @@ interface GanttChartProps {
   /** Optional: filter to specific day range */
   dayStart?: number
   dayEnd?: number
+  /** Start date for the schedule (ISO string), used for displaying real dates */
+  startDate?: string
 }
 
 export function GanttChart({
   assignments,
   dayStart,
   dayEnd,
+  startDate = "2026-01-01",
 }: GanttChartProps) {
   const [zoomIdx, setZoomIdx] = useState(1)
   const [hoveredTask, setHoveredTask] = useState<Assignment | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const pxPerHour = ZOOM_PRESETS[zoomIdx].pxPerHour
 
@@ -96,12 +110,11 @@ export function GanttChart({
 
   const handleMouseEnter = useCallback(
     (task: Assignment, e: React.MouseEvent) => {
-      const rect = scrollRef.current?.getBoundingClientRect()
-      if (!rect) return
       setHoveredTask(task)
+      // Position tooltip above cursor (negative Y offset)
       setTooltipPos({
-        x: e.clientX - rect.left + 12,
-        y: e.clientY - rect.top + 12,
+        x: e.clientX + 12,
+        y: e.clientY - 220, // Position above cursor
       })
     },
     []
@@ -110,11 +123,10 @@ export function GanttChart({
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!hoveredTask) return
-      const rect = scrollRef.current?.getBoundingClientRect()
-      if (!rect) return
+      // Position tooltip above cursor (negative Y offset)
       setTooltipPos({
-        x: e.clientX - rect.left + 12,
-        y: e.clientY - rect.top + 12,
+        x: e.clientX + 12,
+        y: e.clientY - 220, // Position above cursor
       })
     },
     [hoveredTask]
@@ -192,7 +204,6 @@ export function GanttChart({
 
           {/* Scrollable timeline area */}
           <div
-            ref={scrollRef}
             className="flex-1 overflow-x-auto overflow-y-hidden relative"
             onMouseMove={handleMouseMove}
           >
@@ -219,28 +230,7 @@ export function GanttChart({
                         className="absolute top-0 flex items-center justify-center border-r text-[11px] font-semibold text-card-foreground"
                         style={{ left, width, height: 28 }}
                       >
-                        Day {col.day}
-                      </div>
-                    )
-                  })}
-                </div>
-                {/* Hour ticks */}
-                <div
-                  className="relative border-b bg-muted/30"
-                  style={{ height: HEADER_HEIGHT - 28 }}
-                >
-                  {hourTicks.map((absH) => {
-                    const left =
-                      ((absH - range.rangeStart) / range.totalHours) *
-                      timelineWidth
-                    const hourInDay = absH % 24
-                    return (
-                      <div
-                        key={absH}
-                        className="absolute top-0 flex items-center justify-center text-[10px] text-muted-foreground"
-                        style={{ left, width: 4 * pxPerHour, height: HEADER_HEIGHT - 28 }}
-                      >
-                        {hourInDay}h
+                        {formatDayAsDate(col.day, startDate)}
                       </div>
                     )
                   })}
@@ -277,7 +267,11 @@ export function GanttChart({
               )}
               {/* Hour grid lines (lighter) */}
               {hourTicks
-                .filter((h) => h % 24 !== 0) // skip day boundaries
+                .filter((h) => {
+                  // Skip ticks that fall on day boundaries (multiples of 24 relative to range start)
+                  const relativeHour = h - range.rangeStart
+                  return relativeHour % 24 !== 0
+                })
                 .map((absH) => {
                   const left =
                     ((absH - range.rangeStart) / range.totalHours) *
@@ -350,25 +344,26 @@ export function GanttChart({
                 )
               })}
             </div>
-
-            {/* Tooltip */}
-            {hoveredTask && (
-              <div
-                className="absolute z-50 pointer-events-none"
-                style={{ left: tooltipPos.x, top: tooltipPos.y }}
-              >
-                <TaskTooltip task={hoveredTask} />
-              </div>
-            )}
           </div>
         </div>
       </div>
+
+      {/* Tooltip - rendered via portal to avoid clipping */}
+      {mounted && hoveredTask && createPortal(
+        <div
+          className="fixed z-[9999] pointer-events-none"
+          style={{ left: tooltipPos.x, top: tooltipPos.y }}
+        >
+          <TaskTooltip task={hoveredTask} startDate={startDate} />
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
 
 // ---- Tooltip ----
-function TaskTooltip({ task }: { task: Assignment }) {
+function TaskTooltip({ task, startDate }: { task: Assignment; startDate: string }) {
   const colors = GANTT_COLORS[task.task_type] ?? GANTT_COLORS.WAIT
 
   return (
@@ -377,7 +372,7 @@ function TaskTooltip({ task }: { task: Assignment }) {
         <div className={cn("w-2.5 h-2.5 rounded-sm", colors.bg)} />
         <span className="text-xs font-semibold">{task.task_type}</span>
         <Badge variant="outline" className="text-[10px] ml-auto">
-          Day {task.day}
+          {formatDayAsDate(task.day, startDate)}
         </Badge>
       </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
@@ -387,7 +382,7 @@ function TaskTooltip({ task }: { task: Assignment }) {
         </span>
         <span className="text-muted-foreground">Time</span>
         <span className="font-mono">
-          {task.start_hour.toFixed(1)}h &ndash; {task.end_hour.toFixed(1)}h
+          {formatHourAMPM(task.start_hour)} &ndash; {formatHourAMPM(task.end_hour)}
         </span>
         <span className="text-muted-foreground">Duration</span>
         <span className="font-mono">{task.used_hours.toFixed(2)}h</span>
@@ -430,6 +425,16 @@ function TaskTooltip({ task }: { task: Assignment }) {
           </>
         )}
 
+        {task.task_type === "TRANSFER" && (
+          <>
+            <span className="text-muted-foreground">Component</span>
+            <span>
+              <span className="font-mono">{task.component_id}</span>{" "}
+              {task.component_name}
+            </span>
+          </>
+        )}
+
         {task.utilization != null && (
           <>
             <span className="text-muted-foreground">Utilization</span>
@@ -457,7 +462,9 @@ function GanttLegend() {
                 ? "Wait"
                 : type === "CHANGE_MOLD"
                   ? "Mold Change"
-                  : "Color Change"}
+                  : type === "CHANGE_COLOR"
+                    ? "Color Change"
+                    : "Transfer"}
           </span>
         </div>
       ))}

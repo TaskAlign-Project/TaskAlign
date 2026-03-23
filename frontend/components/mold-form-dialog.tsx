@@ -18,13 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { Mold } from "@/lib/types"
+import type { Mold, Component } from "@/lib/types"
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   mold: Mold | null
   existingIds: string[]
+  allComponents: Component[]
   onSave: (mold: Mold) => void
 }
 
@@ -33,6 +34,7 @@ const EMPTY: Mold = {
   name: "",
   group: "small",
   tonnage: 0,
+  component_id: "",
 }
 
 export function MoldFormDialog({
@@ -40,6 +42,7 @@ export function MoldFormDialog({
   onOpenChange,
   mold,
   existingIds,
+  allComponents,
   onSave,
 }: Props) {
   const isEdit = mold !== null
@@ -47,7 +50,7 @@ export function MoldFormDialog({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    setForm(mold ?? EMPTY)
+    setForm(mold ? { ...mold, component_id: mold.component_id ?? "" } : EMPTY)
     setErrors({})
   }, [mold, open])
 
@@ -132,6 +135,30 @@ export function MoldFormDialog({
             {errors.tonnage && (
               <p className="text-xs text-destructive">{errors.tonnage}</p>
             )}
+          </div>
+
+          {/* Component ID (single) */}
+          <div className="flex flex-col gap-1.5">
+            <Label>Component ID</Label>
+            <p className="text-xs text-muted-foreground">
+              Select the component that uses this mold.
+            </p>
+            <Select
+              value={form.component_id || "__none__"}
+              onValueChange={(v) => setForm({ ...form, component_id: v === "__none__" ? "" : v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select component (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {allComponents.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    <span className="font-mono">{c.id}</span> - {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="rounded-md bg-muted px-3 py-2">

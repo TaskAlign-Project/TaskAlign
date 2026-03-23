@@ -1,10 +1,23 @@
-import type { Machine, Mold, Component, PlanSetup } from "./types"
+import type {
+  Machine,
+  Mold,
+  Component,
+  PlanSetup,
+  Plan,
+  PlanMachine,
+  PlanRun,
+} from "./types"
 
 const KEYS = {
+  // Legacy keys (kept for backwards compat, but will migrate to plan-based)
   machines: "taskalign_machines",
   molds: "taskalign_molds",
   components: "taskalign_components",
   planSetup: "taskalign_plan_setup",
+  // New plan-based keys
+  plans: "taskalign:plans",
+  activePlanId: "taskalign:activePlanId",
+  activeRunByPlan: "taskalign:activeRunByPlan",
 }
 
 function getItem<T>(key: string, fallback: T): T {
@@ -22,7 +35,10 @@ function setItem<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
-// Machines
+// ============================================================
+// Legacy storage functions (for backwards compatibility)
+// ============================================================
+
 export function getMachines(): Machine[] {
   return getItem<Machine[]>(KEYS.machines, [])
 }
@@ -30,7 +46,6 @@ export function setMachines(machines: Machine[]): void {
   setItem(KEYS.machines, machines)
 }
 
-// Molds
 export function getMolds(): Mold[] {
   return getItem<Mold[]>(KEYS.molds, [])
 }
@@ -38,7 +53,6 @@ export function setMolds(molds: Mold[]): void {
   setItem(KEYS.molds, molds)
 }
 
-// Components
 export function getComponents(): Component[] {
   return getItem<Component[]>(KEYS.components, [])
 }
@@ -46,11 +60,12 @@ export function setComponents(components: Component[]): void {
   setItem(KEYS.components, components)
 }
 
-// Plan Setup
 export const DEFAULT_PLAN_SETUP: PlanSetup = {
   month_days: 22,
-  mold_change_time_hours: 1.5,
-  color_change_time_hours: 0.5,
+  current_date: new Date().toISOString().split("T")[0],
+  start_time: "08:00",
+  mold_change_time_minutes: 90,
+  color_change_time_minutes: 30,
   pop_size: 50,
   n_generations: 100,
   mutation_rate: 0.1,
@@ -63,87 +78,44 @@ export function setPlanSetup(setup: PlanSetup): void {
   setItem(KEYS.planSetup, setup)
 }
 
-
+// ============================================================
 // Example seed data
-export const EXAMPLE_MACHINES: Machine[] = [
-  { id: "M1", name: "S-IMM-01", group: "small", tonnage: 120, hours_per_day: 12, efficiency: 1.0 },
-  { id: "M2", name: "S-IMM-02", group: "small", tonnage: 120, hours_per_day: 12, efficiency: 1.0 },
-  { id: "M3", name: "M-IMM-03", group: "medium", tonnage: 160, hours_per_day: 12, efficiency: 1.0 }
+// ============================================================
+
+export const EXAMPLE_MACHINES: PlanMachine[] = [
+  { id: "M1", name: "Small Press A", group: "small", tonnage: 80, hours_per_day: 20, efficiency: 0.9, status: "available" },
+  { id: "M2", name: "Small Press B", group: "small", tonnage: 100, hours_per_day: 20, efficiency: 0.85, status: "available" },
+  { id: "M3", name: "Medium Press A", group: "medium", tonnage: 200, hours_per_day: 20, efficiency: 0.9, status: "available" },
+  { id: "M4", name: "Large Press A", group: "large", tonnage: 500, hours_per_day: 18, efficiency: 0.88, status: "available" },
 ]
 
 export const EXAMPLE_MOLDS: Mold[] = [
-  { id: "MO1", name: "Mold-1", group: "small", tonnage: 80 },
-  { id: "MO2", name: "Mold-2", group: "small", tonnage: 80 },
-  { id: "MO3", name: "Mold-3", group: "medium", tonnage: 160 },
-  { id: "MO4", name: "Mold-4", group: "medium", tonnage: 160 }
-
+  { id: "MLD1", name: "Cap Mold", group: "small", tonnage: 60, component_id: "C1" },
+  { id: "MLD2", name: "Body Mold", group: "small", tonnage: 80, component_id: "C2" },
+  { id: "MLD3", name: "Housing Mold", group: "medium", tonnage: 180, component_id: "C3" },
+  { id: "MLD4", name: "Panel Mold", group: "large", tonnage: 400, component_id: "C4" },
 ]
 
 export const EXAMPLE_COMPONENTS: Component[] = [
-  {
-    id: "C1",
-    name: "Base-Part (Red)",
-    quantity: 800,
-    cycle_time_sec: 40,
-    mold_id: "MO1",
-    color: "red",
-    due_day: 2,
-    lead_time_days: 1,
-    prerequisites: [],
-  },
-  {
-    id: "C2",
-    name: "Top-Part (Blue) depends on C1",
-    quantity: 600,
-    cycle_time_sec: 30,
-    mold_id: "MO2",
-    color: "blue",
-    due_day: 3,
-    lead_time_days: 1,
-    prerequisites: ["C1"],
-  },
-  {
-    id: "C3",
-    name: "Small-Runner (Red)",
-    quantity: 200,
-    cycle_time_sec: 20,
-    mold_id: "MO1",
-    color: "blue",
-    due_day: 2,
-    lead_time_days: 1,
-    prerequisites: [],
-  },
-  {
-    id: "C4",
-    name: "Medium-Runner (Red)",
-    quantity: 800,
-    cycle_time_sec: 30,
-    mold_id: "MO3",
-    color: "blue",
-    due_day: 2,
-    lead_time_days: 1,
-    prerequisites: []
-  },
-  {
-    id: "C5",
-    name: "Medium-Top-Part (Red)",
-    quantity: 800,
-    cycle_time_sec: 30,
-    mold_id: "MO4",
-    color: "blue",
-    due_day: 2,
-    lead_time_days: 1,
-    prerequisites: []
-  }
+  // Each order code is a separate component entry with its own start/due dates
+  { id: "C1-ORD001", name: "Bottle Cap", quantity: 5000, finished: 0, cycle_time_sec: 12, mold_id: "MLD1", color: "white", start_date: "2026-01-01", due_date: "2026-01-08", lead_time_days: 2, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-001" },
+  { id: "C1-ORD002", name: "Bottle Cap", quantity: 5000, finished: 0, cycle_time_sec: 12, mold_id: "MLD1", color: "white", start_date: "2026-01-05", due_date: "2026-01-12", lead_time_days: 2, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-002" },
+  { id: "C2-ORD001", name: "Bottle Body", quantity: 10000, finished: 0, cycle_time_sec: 25, mold_id: "MLD2", color: "white", start_date: "2026-01-03", due_date: "2026-01-12", lead_time_days: 3, prerequisites: ["C1-ORD001"], dependency_mode: "wait", transfer_time_minutes: 30, order_code: "ORD-001" },
+  { id: "C3-ORD003", name: "Housing Shell", quantity: 5000, finished: 5000, cycle_time_sec: 35, mold_id: "MLD3", color: "black", start_date: "2026-01-01", due_date: "2026-01-15", lead_time_days: 4, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-003" },
+  { id: "C4-ORD003", name: "Dashboard Panel", quantity: 1000, finished: 500, cycle_time_sec: 60, mold_id: "MLD4", color: "gray", start_date: "2026-01-05", due_date: "2026-01-18", lead_time_days: 5, prerequisites: ["C3-ORD003"], dependency_mode: "parallel", transfer_time_minutes: 60, order_code: "ORD-003" },
+  { id: "C4-ORD004", name: "Dashboard Panel", quantity: 1000, finished: 0, cycle_time_sec: 60, mold_id: "MLD4", color: "gray", start_date: "2026-01-10", due_date: "2026-01-22", lead_time_days: 5, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "ORD-004" },
+  { id: "C5", name: "Bottle Cap (Blue)", quantity: 8000, finished: 0, cycle_time_sec: 12, mold_id: "MLD1", color: "blue", start_date: "2026-01-01", due_date: "2026-01-18", lead_time_days: 2, prerequisites: [], dependency_mode: "wait", transfer_time_minutes: 0, order_code: "" },
 ]
 
 export const EXAMPLE_PLAN_SETUP: PlanSetup = {
-  month_days: 3,
-  mold_change_time_hours: 1.0,
-  color_change_time_hours: 0.5,
-  pop_size: 25,
-  n_generations: 60,
-  mutation_rate: 0.3,
+  month_days: 22,
+  current_date: "2026-01-01",
+  start_time: "08:00",
+  mold_change_time_minutes: 90,
+  color_change_time_minutes: 30,
+  pop_size: 50,
+  n_generations: 100,
+  mutation_rate: 0.1,
 }
 
 export function loadExampleData(): void {
@@ -151,4 +123,295 @@ export function loadExampleData(): void {
   setMolds(EXAMPLE_MOLDS)
   setComponents(EXAMPLE_COMPONENTS)
   setPlanSetup(EXAMPLE_PLAN_SETUP)
+}
+
+// ============================================================
+// Plan-based storage functions
+// ============================================================
+
+export function getPlans(): Plan[] {
+  return getItem<Plan[]>(KEYS.plans, [])
+}
+
+export function savePlans(plans: Plan[]): void {
+  setItem(KEYS.plans, plans)
+}
+
+export function getPlanById(planId: string): Plan | undefined {
+  return getPlans().find((p) => p.id === planId)
+}
+
+function generatePlanName(plans: Plan[]): string {
+  const existingNums = plans
+    .map((p) => {
+      const match = p.name.match(/^Plan (\d+)$/)
+      return match ? parseInt(match[1], 10) : 0
+    })
+    .filter((n) => n > 0)
+  const maxNum = existingNums.length > 0 ? Math.max(...existingNums) : 0
+  return `Plan ${String(maxNum + 1).padStart(2, "0")}`
+}
+
+export function createPlan(options?: { name?: string; fromPlanId?: string }): Plan {
+  const plans = getPlans()
+  const now = new Date().toISOString()
+  const id = crypto.randomUUID()
+
+  let machines: PlanMachine[]
+  let molds: Mold[]
+  let components: Component[]
+  let setup: PlanSetup
+
+  if (options?.fromPlanId) {
+    // Duplicate from existing plan
+    const source = plans.find((p) => p.id === options.fromPlanId)
+    if (source) {
+      machines = structuredClone(source.machines)
+      molds = structuredClone(source.molds)
+      components = structuredClone(source.components)
+      setup = structuredClone(source.setup)
+    } else {
+      machines = structuredClone(EXAMPLE_MACHINES)
+      molds = structuredClone(EXAMPLE_MOLDS)
+      components = structuredClone(EXAMPLE_COMPONENTS)
+      setup = structuredClone(EXAMPLE_PLAN_SETUP)
+    }
+  } else {
+    // Initialize with example data
+    machines = structuredClone(EXAMPLE_MACHINES)
+    molds = structuredClone(EXAMPLE_MOLDS)
+    components = structuredClone(EXAMPLE_COMPONENTS)
+    setup = structuredClone(EXAMPLE_PLAN_SETUP)
+  }
+
+  const plan: Plan = {
+    id,
+    name: options?.name || generatePlanName(plans),
+    created_at: now,
+    updated_at: now,
+    setup,
+    machines,
+    molds,
+    components,
+    runs: [],
+  }
+
+  savePlans([...plans, plan])
+  return plan
+}
+
+export function duplicatePlan(planId: string): Plan | null {
+  const plans = getPlans()
+  const source = plans.find((p) => p.id === planId)
+  if (!source) return null
+
+  const newName = `${source.name} (Copy)`
+  return createPlan({ name: newName, fromPlanId: planId })
+}
+
+export function deletePlan(planId: string): void {
+  const plans = getPlans().filter((p) => p.id !== planId)
+  savePlans(plans)
+
+  // Clear active plan if deleted
+  if (getActivePlanId() === planId) {
+    setActivePlanId(null)
+  }
+
+  // Clean up active run tracking
+  const activeRuns = getActiveRunByPlan()
+  delete activeRuns[planId]
+  setItem(KEYS.activeRunByPlan, activeRuns)
+}
+
+export function updatePlan(planId: string, updates: Partial<Pick<Plan, "name" | "month_label">>): void {
+  const plans = getPlans()
+  const idx = plans.findIndex((p) => p.id === planId)
+  if (idx === -1) return
+
+  plans[idx] = {
+    ...plans[idx],
+    ...updates,
+    updated_at: new Date().toISOString(),
+  }
+  savePlans(plans)
+}
+
+// ============================================================
+// Active plan management
+// ============================================================
+
+export function getActivePlanId(): string | null {
+  return getItem<string | null>(KEYS.activePlanId, null)
+}
+
+export function setActivePlanId(id: string | null): void {
+  setItem(KEYS.activePlanId, id)
+}
+
+export function getActivePlan(): Plan | null {
+  const id = getActivePlanId()
+  if (!id) return null
+  return getPlanById(id) ?? null
+}
+
+// ============================================================
+// Plan data update helpers
+// ============================================================
+
+export function updateActivePlanMachines(machines: PlanMachine[]): void {
+  const planId = getActivePlanId()
+  if (!planId) return
+
+  const plans = getPlans()
+  const idx = plans.findIndex((p) => p.id === planId)
+  if (idx === -1) return
+
+  plans[idx].machines = machines
+  plans[idx].updated_at = new Date().toISOString()
+  savePlans(plans)
+}
+
+export function updateActivePlanMolds(molds: Mold[]): void {
+  const planId = getActivePlanId()
+  if (!planId) return
+
+  const plans = getPlans()
+  const idx = plans.findIndex((p) => p.id === planId)
+  if (idx === -1) return
+
+  plans[idx].molds = molds
+  plans[idx].updated_at = new Date().toISOString()
+  savePlans(plans)
+}
+
+export function updateActivePlanComponents(components: Component[]): void {
+  const planId = getActivePlanId()
+  if (!planId) return
+
+  const plans = getPlans()
+  const idx = plans.findIndex((p) => p.id === planId)
+  if (idx === -1) return
+
+  plans[idx].components = components
+  plans[idx].updated_at = new Date().toISOString()
+  savePlans(plans)
+}
+
+export function updateActivePlanSetup(setup: PlanSetup): void {
+  const planId = getActivePlanId()
+  if (!planId) return
+
+  const plans = getPlans()
+  const idx = plans.findIndex((p) => p.id === planId)
+  if (idx === -1) return
+
+  plans[idx].setup = setup
+  plans[idx].updated_at = new Date().toISOString()
+  savePlans(plans)
+}
+
+// ============================================================
+// Run history management
+// ============================================================
+
+export function appendPlanRun(planId: string, run: PlanRun): void {
+  const plans = getPlans()
+  const idx = plans.findIndex((p) => p.id === planId)
+  if (idx === -1) return
+
+  plans[idx].runs.push(run)
+  plans[idx].updated_at = new Date().toISOString()
+  savePlans(plans)
+
+  // Also set this run as the current run for this plan
+  setCurrentRun(planId, run.id)
+}
+
+export function getActiveRunByPlan(): Record<string, string> {
+  return getItem<Record<string, string>>(KEYS.activeRunByPlan, {})
+}
+
+export function setCurrentRun(planId: string, runId: string): void {
+  const activeRuns = getActiveRunByPlan()
+  activeRuns[planId] = runId
+  setItem(KEYS.activeRunByPlan, activeRuns)
+}
+
+export function getCurrentRunId(planId: string): string | null {
+  const activeRuns = getActiveRunByPlan()
+  return activeRuns[planId] ?? null
+}
+
+export function getCurrentRun(planId: string): PlanRun | null {
+  const plan = getPlanById(planId)
+  if (!plan) return null
+
+  const runId = getCurrentRunId(planId)
+  if (!runId) {
+    // If no current run set, return the latest run
+    return plan.runs.length > 0 ? plan.runs[plan.runs.length - 1] : null
+  }
+
+  return plan.runs.find((r) => r.id === runId) ?? null
+}
+
+export function getLatestRun(planId: string): PlanRun | null {
+  const plan = getPlanById(planId)
+  if (!plan || plan.runs.length === 0) return null
+  return plan.runs[plan.runs.length - 1]
+}
+
+// ============================================================
+// Demo data creation (with pre-populated run result)
+// ============================================================
+
+import { DEMO_RESULT } from "./schedule-utils"
+
+export function createDemoPlan(): Plan {
+  const plans = getPlans()
+  const now = new Date().toISOString()
+  const id = crypto.randomUUID()
+  const runId = crypto.randomUUID()
+
+  const demoRun: PlanRun = {
+    id: runId,
+    created_at: now,
+    mode: "fresh",
+    result: DEMO_RESULT,
+  }
+
+  const plan: Plan = {
+    id,
+    name: "Demo Plan",
+    month_label: "Demo Month",
+    created_at: now,
+    updated_at: now,
+    setup: structuredClone(EXAMPLE_PLAN_SETUP),
+    machines: structuredClone(EXAMPLE_MACHINES),
+    molds: structuredClone(EXAMPLE_MOLDS),
+    components: structuredClone(EXAMPLE_COMPONENTS),
+    runs: [demoRun],
+  }
+
+  savePlans([...plans, plan])
+  setActivePlanId(plan.id)
+  setCurrentRun(plan.id, runId)
+
+  return plan
+}
+
+export function addDemoRunToActivePlan(): PlanRun | null {
+  const planId = getActivePlanId()
+  if (!planId) return null
+
+  const run: PlanRun = {
+    id: crypto.randomUUID(),
+    created_at: new Date().toISOString(),
+    mode: "fresh",
+    result: DEMO_RESULT,
+  }
+
+  appendPlanRun(planId, run)
+  return run
 }

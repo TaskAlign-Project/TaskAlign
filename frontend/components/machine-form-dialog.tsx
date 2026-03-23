@@ -18,23 +18,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { Machine } from "@/lib/types"
+import type { PlanMachine, MachineStatus } from "@/lib/types"
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
-  machine: Machine | null
+  machine: PlanMachine | null
   existingIds: string[]
-  onSave: (machine: Machine) => void
+  onSave: (machine: PlanMachine) => void
 }
 
-const EMPTY: Machine = {
+const EMPTY: PlanMachine = {
   id: "",
   name: "",
   group: "small",
   tonnage: 0,
   hours_per_day: 0,
   efficiency: 1.0,
+  status: "available",
 }
 
 export function MachineFormDialog({
@@ -45,7 +46,7 @@ export function MachineFormDialog({
   onSave,
 }: Props) {
   const isEdit = machine !== null
-  const [form, setForm] = useState<Machine>(EMPTY)
+  const [form, setForm] = useState<PlanMachine>(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -112,7 +113,7 @@ export function MachineFormDialog({
             <Select
               value={form.group}
               onValueChange={(v) =>
-                setForm({ ...form, group: v as Machine["group"] })
+                setForm({ ...form, group: v as PlanMachine["group"] })
               }
             >
               <SelectTrigger>
@@ -181,6 +182,35 @@ export function MachineFormDialog({
             {errors.efficiency && (
               <p className="text-xs text-destructive">{errors.efficiency}</p>
             )}
+          </div>
+
+          {/* Status */}
+          <div className="flex flex-col gap-1.5">
+            <Label>Status</Label>
+            <Select
+              value={form.status}
+              onValueChange={(v) =>
+                setForm({ ...form, status: v as MachineStatus })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="available">
+                  <span className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    Available
+                  </span>
+                </SelectItem>
+                <SelectItem value="unavailable">
+                  <span className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                    Unavailable
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <DialogFooter>

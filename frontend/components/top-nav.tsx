@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   LayoutDashboard,
   Cog,
@@ -10,15 +10,20 @@ import {
   Puzzle,
   CalendarClock,
   ClipboardList,
+  FolderKanban,
   Menu,
   X,
+  AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { getActivePlanId, getActivePlan } from "@/lib/storage"
 
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Plans", href: "/plans", icon: FolderKanban },
   { label: "Machines", href: "/machines", icon: Cog },
   { label: "Molds", href: "/molds", icon: Box },
   { label: "Components", href: "/components", icon: Puzzle },
@@ -29,15 +34,29 @@ const navItems = [
 export function TopNav() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [activePlanName, setActivePlanName] = useState<string | null>(null)
+  const [hasActivePlan, setHasActivePlan] = useState(true)
+
+  useEffect(() => {
+    const plan = getActivePlan()
+    setHasActivePlan(!!plan)
+    setActivePlanName(plan?.name ?? null)
+  }, [pathname]) // Re-check on navigation
+
+  // Pages that require an active plan
+  const requiresPlan = ["/machines", "/molds", "/components", "/plan"].some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  )
+  const showWarning = requiresPlan && !hasActivePlan
 
   return (
     <header className="sticky top-0 z-50 border-b bg-card">
       <div className="flex h-14 items-center gap-6 px-4 md:px-6">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0">
-          {/* <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary">
+          <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary">
             <CalendarClock className="w-3.5 h-3.5 text-primary-foreground" />
-          </div> */}
+          </div>
           <span className="text-base font-semibold tracking-tight text-card-foreground">
             TaskAlign
           </span>
@@ -68,8 +87,37 @@ export function TopNav() {
           })}
         </nav>
 
+        {/* Active plan indicator / warning */}
+        <div className="hidden md:flex items-center gap-2 ml-auto">
+          {hasActivePlan && activePlanName ? (
+            <Link href="/plans">
+              <Badge variant="secondary" className="cursor-pointer hover:bg-muted">
+                Plan: {activePlanName}
+              </Badge>
+            </Link>
+          ) : (
+            <Link href="/plans">
+              <Badge
+                variant="destructive"
+                className="cursor-pointer gap-1.5 hover:bg-destructive/90"
+              >
+                <AlertCircle className="h-3 w-3" />
+                No plan selected
+              </Badge>
+            </Link>
+          )}
+        </div>
+
         {/* Mobile hamburger */}
-        <div className="flex md:hidden ml-auto">
+        <div className="flex md:hidden ml-auto items-center gap-2">
+          {!hasActivePlan && (
+            <Link href="/plans">
+              <Badge variant="destructive" className="gap-1 text-xs">
+                <AlertCircle className="h-3 w-3" />
+                No plan
+              </Badge>
+            </Link>
+          )}
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon">
@@ -96,6 +144,13 @@ export function TopNav() {
                   <span className="sr-only">Close menu</span>
                 </Button>
               </div>
+              {/* Active plan badge in mobile menu */}
+              {activePlanName && (
+                <div className="px-4 py-2 border-b bg-muted/50">
+                  <p className="text-xs text-muted-foreground">Active Plan:</p>
+                  <p className="text-sm font-medium">{activePlanName}</p>
+                </div>
+              )}
               <nav className="flex flex-col gap-1 p-3">
                 {navItems.map((item) => {
                   const isActive =
