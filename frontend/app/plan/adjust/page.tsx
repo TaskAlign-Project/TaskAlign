@@ -16,6 +16,7 @@ import {
   X,
   GripVertical,
   Undo2,
+  Copy,
 } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { NoPlanState } from "@/components/no-plan-state"
@@ -392,6 +393,31 @@ function AdjustContent({
     )
   }
 
+  // Duplicate a task (for splitting production across days)
+  function duplicateTask(index: number) {
+    const taskToDuplicate = assignments.find(a => a._originalIndex === index)
+    if (!taskToDuplicate) return
+
+    // Find the next available original index (for tracking)
+    const maxIndex = Math.max(...assignments.map(a => a._originalIndex))
+    const newIndex = maxIndex + 1
+
+    // Create duplicated task, defaulting to next day
+    const newTask: EditableAssignment = {
+      ...taskToDuplicate,
+      _originalIndex: newIndex,
+      _modified: true,
+      day: taskToDuplicate.day + 1, // Default to next day
+      start_hour: 0, // Start at beginning of day
+      end_hour: taskToDuplicate.end_hour - taskToDuplicate.start_hour, // Same duration
+      used_hours: taskToDuplicate.used_hours,
+    }
+
+    setAssignments(prev => [...prev, newTask])
+    setSelectedTaskIndex(newIndex) // Select the new task
+    toast.success("Task duplicated - adjust date and qty as needed")
+  }
+
   // Save & Validate
   async function handleSaveValidate() {
     setValidating(true)
@@ -689,14 +715,16 @@ function AdjustContent({
                 {selectedTask ? (
  <TaskInspector
   task={selectedTask}
+  originalTask={originalAssignments[selectedTask._originalIndex] ?? null}
   startDate={startDate}
   machines={plan.machines}
   components={plan.components}
   days={days}
   onUpdate={(updates) => updateTask(selectedTask._originalIndex, updates)}
-                    onReset={() => handleResetTask(selectedTask._originalIndex)}
-                    hasError={selectedTaskHasError}
-                  />
+  onReset={() => handleResetTask(selectedTask._originalIndex)}
+  onDuplicate={() => duplicateTask(selectedTask._originalIndex)}
+  hasError={selectedTaskHasError}
+  />
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Click a task bar to view and edit details
@@ -1007,25 +1035,46 @@ function DraggableTask({
 // ---- Task Inspector with editable fields ----
 function TaskInspector({ 
   task, 
+  originalTask,
   startDate,
   machines,
   components,
   days,
   onUpdate,
   onReset,
+  onDuplicate,
   hasError,
 }: { 
   task: EditableAssignment
+  originalTask: Assignment | null
   startDate: string
   machines: PlanMachine[]
   components: { id: string; cycle_time_sec: number }[]
   days: number[]
   onUpdate: (updates: Partial<EditableAssignment>) => void
   onReset: () => void
+  onDuplicate: () => void
   hasError: boolean
 }) {
   const colors = GANTT_COLORS[task.task_type] ?? GANTT_COLORS.WAIT
   const duration = task.end_hour - task.start_hour
+
+  // Store the original cycle time (seconds per unit) - calculated once from original task data
+  // This ensures we always have a reliable cycle time even after qty changes
+  const originalCycleTimeSec = useMemo(() => {
+    // First try to find from components
+    const comp = components.find(c => c.id === task.component_id)
+    if (comp && comp.cycle_time_sec > 0) {
+      return comp.cycle_time_sec
+    }
+    // Fallback: calculate from original task data (before any modifications)
+    const origQty = originalTask?.produced_qty ?? task.produced_qty
+    const origHours = originalTask?.used_hours ?? task.used_hours
+    if (origQty && origQty > 0 && origHours && origHours > 0) {
+      return (origHours * 3600) / origQty
+    }
+    return 0
+  }, [task.component_id, task._originalIndex, components, originalTask])
 
   // Local form state for controlled inputs
   const [dateValue, setDateValue] = useState(formatDateFromDay(task.day, startDate))
@@ -1097,16 +1146,15 @@ function TaskInspector({
     })
   }
 
-  // Apply produced qty change - recalculates duration based on cycle time
+  // Apply produced qty change - recalculates duration based on stored original cycle time
   function handleProducedQtyChange(value: string) {
     setProducedQtyValue(value)
     const qty = parseInt(value) || 0
     if (qty >= 0) {
-      // Find the component's cycle time to recalculate duration
-      const comp = components.find(c => c.id === task.component_id)
-      if (comp && comp.cycle_time_sec > 0) {
+      // Use the stored original cycle time (calculated once from original task data)
+      if (originalCycleTimeSec > 0) {
         // Calculate new duration in hours: qty * cycle_time_sec / 3600
-        const newDurationHours = (qty * comp.cycle_time_sec) / 3600
+        const newDurationHours = (qty * originalCycleTimeSec) / 3600
         const newEndHour = Math.min(24, task.start_hour + newDurationHours)
         
         setEndTimeValue(formatTimeHHMM(newEndHour))
@@ -1116,7 +1164,7 @@ function TaskInspector({
           used_hours: newEndHour - task.start_hour,
         })
       } else {
-        // No cycle time available, just update qty
+        // No cycle time available, just update qty without changing duration
         onUpdate({ produced_qty: qty })
       }
     }
@@ -1267,18 +1315,31 @@ function TaskInspector({
           </div>
         </div>
 
-        {/* Reset task button */}
-        {task._modified && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onReset}
-            className="mt-2"
-          >
-            <Undo2 className="mr-2 h-3.5 w-3.5" />
-            Reset Task
-          </Button>
-        )}
+  {/* Action buttons */}
+  <div className="flex gap-2 mt-2">
+    {task.task_type === "PRODUCE" && (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onDuplicate}
+        className="flex-1"
+      >
+        <Copy className="mr-2 h-3.5 w-3.5" />
+        Duplicate
+      </Button>
+    )}
+    {task._modified && (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onReset}
+        className="flex-1"
+      >
+        <Undo2 className="mr-2 h-3.5 w-3.5" />
+        Reset Task
+      </Button>
+    )}
+  </div>
       </div>
     </div>
   )
