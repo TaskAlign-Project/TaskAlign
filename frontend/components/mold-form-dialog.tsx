@@ -11,6 +11,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -18,13 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { Mold } from "@/lib/types"
+import type { Mold, Component } from "@/lib/types"
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   mold: Mold | null
   existingIds: string[]
+  allComponents: Component[]
   onSave: (mold: Mold) => void
 }
 
@@ -33,6 +37,7 @@ const EMPTY: Mold = {
   name: "",
   group: "small",
   tonnage: 0,
+  component_ids: [],
 }
 
 export function MoldFormDialog({
@@ -40,6 +45,7 @@ export function MoldFormDialog({
   onOpenChange,
   mold,
   existingIds,
+  allComponents,
   onSave,
 }: Props) {
   const isEdit = mold !== null
@@ -47,9 +53,18 @@ export function MoldFormDialog({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    setForm(mold ?? EMPTY)
+    setForm(mold ? { ...mold, component_ids: mold.component_ids ?? [] } : EMPTY)
     setErrors({})
   }, [mold, open])
+
+  function toggleComponent(id: string) {
+    setForm((prev) => ({
+      ...prev,
+      component_ids: prev.component_ids.includes(id)
+        ? prev.component_ids.filter((c) => c !== id)
+        : [...prev.component_ids, id],
+    }))
+  }
 
   function validate(): boolean {
     const e: Record<string, string> = {}
@@ -131,6 +146,51 @@ export function MoldFormDialog({
             />
             {errors.tonnage && (
               <p className="text-xs text-destructive">{errors.tonnage}</p>
+            )}
+          </div>
+
+          {/* Component IDs */}
+          <div className="flex flex-col gap-1.5">
+            <Label>Component IDs</Label>
+            <p className="text-xs text-muted-foreground">
+              Select components that use this mold.
+            </p>
+            {allComponents.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">
+                No components available.
+              </p>
+            ) : (
+              <ScrollArea className="h-32 rounded-md border p-2">
+                <div className="flex flex-col gap-2">
+                  {allComponents.map((c) => (
+                    <label
+                      key={c.id}
+                      className="flex items-center gap-2 text-sm cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={form.component_ids.includes(c.id)}
+                        onCheckedChange={() => toggleComponent(c.id)}
+                      />
+                      <span className="font-mono text-xs">{c.id}</span>
+                      <span className="text-muted-foreground">{c.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+            {form.component_ids.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {form.component_ids.slice(0, 3).map((id) => (
+                  <Badge key={id} variant="outline" className="text-xs font-mono">
+                    {id}
+                  </Badge>
+                ))}
+                {form.component_ids.length > 3 && (
+                  <Badge variant="secondary" className="text-xs">
+                    +{form.component_ids.length - 3} more
+                  </Badge>
+                )}
+              </div>
             )}
           </div>
 

@@ -63,6 +63,13 @@ export default function PlanPage() {
     updateActivePlanSetup(next)
   }
 
+  function updateFieldString(field: keyof PlanSetup, value: string) {
+    if (!form || !plan) return
+    const next = { ...form, [field]: value }
+    setForm(next)
+    updateActivePlanSetup(next)
+  }
+
   async function handleRun() {
     setLoading(true)
     setError(null)
@@ -103,8 +110,8 @@ export default function PlanPage() {
     try {
       const res = await runSchedule({
         month_days: setup.month_days,
-        mold_change_time_hours: setup.mold_change_time_hours,
-        color_change_time_hours: setup.color_change_time_hours,
+        mold_change_time_minutes: setup.mold_change_time_minutes,
+        color_change_time_minutes: setup.color_change_time_minutes,
         machines,
         molds,
         components,
@@ -120,8 +127,9 @@ export default function PlanPage() {
         mode: mode === "fresh" && plan && plan.runs.length > 0 ? "fresh" : plan?.runs.length === 0 ? "fresh" : "resume",
         request_snapshot: {
           month_days: setup.month_days,
-          mold_change_time_hours: setup.mold_change_time_hours,
-          color_change_time_hours: setup.color_change_time_hours,
+          current_date: setup.current_date,
+          mold_change_time_minutes: setup.mold_change_time_minutes,
+          color_change_time_minutes: setup.color_change_time_minutes,
           pop_size: setup.pop_size,
           n_generations: setup.n_generations,
           mutation_rate: setup.mutation_rate,
@@ -256,43 +264,73 @@ export default function PlanPage() {
             <CardTitle className="text-base">Schedule Parameters</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="month-days">Month Days</Label>
-              <Input
-                id="month-days"
-                type="number"
-                value={form.month_days || ""}
-                onChange={(e) =>
-                  updateField("month_days", parseInt(e.target.value) || 0)
-                }
-              />
+            <div className="grid grid-cols-3 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="current-date">Current Date (Start)</Label>
+                <Input
+                  id="current-date"
+                  type="date"
+                  value={form.current_date || ""}
+                  onChange={(e) =>
+                    updateFieldString("current_date", e.target.value)
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  The start date of the schedule
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="start-time">Start Time</Label>
+                <Input
+                  id="start-time"
+                  type="time"
+                  value={form.start_time || "08:00"}
+                  onChange={(e) =>
+                    updateFieldString("start_time", e.target.value)
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Time when factory begins work
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="month-days">Month Days</Label>
+                <Input
+                  id="month-days"
+                  type="number"
+                  value={form.month_days || ""}
+                  onChange={(e) =>
+                    updateField("month_days", parseInt(e.target.value) || 0)
+                  }
+                />
+              </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="mold-change">Mold Change Time (hours)</Label>
+              <Label htmlFor="mold-change">Mold Change Time (minutes)</Label>
               <Input
                 id="mold-change"
                 type="number"
-                step="0.1"
-                value={form.mold_change_time_hours ?? ""}
+                step="1"
+                value={form.mold_change_time_minutes ?? ""}
                 onChange={(e) =>
                   updateField(
-                    "mold_change_time_hours",
-                    parseFloat(e.target.value) || 0
+                    "mold_change_time_minutes",
+                    parseInt(e.target.value) || 0
                   )
                 }
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="color-change">Color Change Time (hours)</Label>
+              <Label htmlFor="color-change">Color Change Time (minutes)</Label>
               <Input
                 id="color-change"
                 type="number"
-                step="0.1"
-                value={form.color_change_time_hours ?? ""}
+                step="1"
+                value={form.color_change_time_minutes ?? ""}
                 onChange={(e) =>
                   updateField(
-                    "color_change_time_hours",
-                    parseFloat(e.target.value) || 0
+                    "color_change_time_minutes",
+                    parseInt(e.target.value) || 0
                   )
                 }
               />

@@ -18,9 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Component, Mold } from "@/lib/types"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { X } from "lucide-react"
+import type { Component, Mold, DependencyMode } from "@/lib/types"
 
 interface Props {
   open: boolean
@@ -40,9 +43,13 @@ const EMPTY: Component = {
   cycle_time_sec: 0,
   mold_id: "",
   color: "",
-  due_day: 1,
+  start_date: new Date().toISOString().split("T")[0],
+  due_date: new Date().toISOString().split("T")[0],
   lead_time_days: 0,
   prerequisites: [],
+  dependency_mode: "wait",
+  transfer_time_minutes: 0,
+  order_codes: [],
 }
 
 export function ComponentFormDialog({
@@ -58,10 +65,42 @@ export function ComponentFormDialog({
   const [form, setForm] = useState<Component>(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  const [newOrderCode, setNewOrderCode] = useState("")
+
   useEffect(() => {
-    setForm(component ?? EMPTY)
+    if (component) {
+      setForm({
+        ...component,
+        start_date: component.start_date ?? new Date().toISOString().split("T")[0],
+        due_date: component.due_date ?? new Date().toISOString().split("T")[0],
+        dependency_mode: component.dependency_mode ?? "wait",
+        transfer_time_minutes: component.transfer_time_minutes ?? 0,
+        order_codes: component.order_codes ?? [],
+      })
+    } else {
+      setForm(EMPTY)
+    }
     setErrors({})
+    setNewOrderCode("")
   }, [component, open])
+
+  function addOrderCode() {
+    const code = newOrderCode.trim()
+    if (code && !form.order_codes.includes(code)) {
+      setForm((prev) => ({
+        ...prev,
+        order_codes: [...prev.order_codes, code],
+      }))
+      setNewOrderCode("")
+    }
+  }
+
+  function removeOrderCode(code: string) {
+    setForm((prev) => ({
+      ...prev,
+      order_codes: prev.order_codes.filter((c) => c !== code),
+    }))
+  }
 
   // Available prerequisites: all components except self
   const availablePrereqs = allComponents.filter((c) => c.id !== form.id)
@@ -84,10 +123,15 @@ export function ComponentFormDialog({
     if ((form.finished ?? 0) < 0) e.finished = "Finished must be >= 0"
     if (form.cycle_time_sec <= 0)
       e.cycle_time_sec = "Cycle time must be > 0"
-    if (form.due_day < 1) e.due_day = "Due day must be >= 1"
+    if (!form.start_date) e.start_date = "Start date is required"
+    if (!form.due_date) e.due_date = "Due date is required"
+    if (form.start_date && form.due_date && form.start_date > form.due_date)
+      e.start_date = "Start date must be before or equal to due date"
     if (form.lead_time_days < 0)
       e.lead_time_days = "Lead time must be >= 0"
     if (!form.mold_id) e.mold_id = "Mold is required"
+    if ((form.transfer_time_minutes ?? 0) < 0)
+      e.transfer_time_minutes = "Transfer time must be >= 0"
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -98,6 +142,8 @@ export function ComponentFormDialog({
     onSave({ ...form, id: form.id.trim(), name: form.name.trim() })
     onOpenChange(false)
   }
+
+  const hasPrerequisites = form.prerequisites.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -231,23 +277,42 @@ export function ComponentFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {/* Due Day */}
+          <div className="grid grid-cols-3 gap-4">
+            {/* Start Date */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="comp-due">Due Day</Label>
+              <Label htmlFor="comp-start">Start Date</Label>
               <Input
-                id="comp-due"
-                type="number"
-                value={form.due_day || ""}
+                id="comp-start"
+                type="date"
+                value={form.start_date || ""}
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    due_day: parseInt(e.target.value) || 0,
+                    start_date: e.target.value,
                   })
                 }
               />
-              {errors.due_day && (
-                <p className="text-xs text-destructive">{errors.due_day}</p>
+              {errors.start_date && (
+                <p className="text-xs text-destructive">{errors.start_date}</p>
+              )}
+            </div>
+
+            {/* Due Date */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="comp-due">Due Date</Label>
+              <Input
+                id="comp-due"
+                type="date"
+                value={form.due_date || ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    due_date: e.target.value,
+                  })
+                }
+              />
+              {errors.due_date && (
+                <p className="text-xs text-destructive">{errors.due_date}</p>
               )}
             </div>
 
@@ -275,10 +340,9 @@ export function ComponentFormDialog({
 
           {/* Prerequisites */}
           <div className="flex flex-col gap-1.5">
-            <Label>Prerequisites</Label>
+            <Label>Prerequisites (Dependencies)</Label>
             <p className="text-xs text-muted-foreground">
-              Select component dependencies. Dependencies must not form a cycle
-              (backend will validate).
+              Select component dependencies. Dependencies must not form a cycle.
             </p>
             {availablePrereqs.length === 0 ? (
               <p className="text-xs text-muted-foreground italic">
@@ -304,6 +368,117 @@ export function ComponentFormDialog({
               </ScrollArea>
             )}
           </div>
+
+          {/* Order Codes */}
+          <div className="flex flex-col gap-1.5">
+            <Label>Order Codes</Label>
+            <p className="text-xs text-muted-foreground">
+              Add order codes associated with this component.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter order code..."
+                value={newOrderCode}
+                onChange={(e) => setNewOrderCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    addOrderCode()
+                  }
+                }}
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={addOrderCode}
+                disabled={!newOrderCode.trim()}
+              >
+                Add
+              </Button>
+            </div>
+            {form.order_codes.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {form.order_codes.map((code) => (
+                  <Badge
+                    key={code}
+                    variant="outline"
+                    className="text-xs font-mono flex items-center gap-1"
+                  >
+                    {code}
+                    <button
+                      type="button"
+                      onClick={() => removeOrderCode(code)}
+                      className="ml-0.5 hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Dependency Behavior - only shown when there are prerequisites */}
+          {hasPrerequisites && (
+            <div className="flex flex-col gap-3 rounded-md border p-3 bg-muted/30">
+              <Label>Dependency Behavior</Label>
+              <RadioGroup
+                value={form.dependency_mode}
+                onValueChange={(v) => setForm({ ...form, dependency_mode: v as DependencyMode })}
+                className="flex flex-col gap-2"
+              >
+                <div className="flex items-start gap-2">
+                  <RadioGroupItem value="wait" id="dep-wait" className="mt-1" />
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="dep-wait" className="font-medium cursor-pointer">
+                      Wait for dependencies
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Must wait until all dependencies are finished before production can start.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <RadioGroupItem value="parallel" id="dep-parallel" className="mt-1" />
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="dep-parallel" className="font-medium cursor-pointer">
+                      Produce in parallel
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Can be produced in parallel with dependencies.
+                    </p>
+                  </div>
+                </div>
+              </RadioGroup>
+
+              {/* Transfer Time */}
+              <div className="flex flex-col gap-1.5 mt-2">
+                <Label htmlFor="comp-transfer">Transfer/Move Time (minutes)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Optional time needed to transfer from dependency. Defaults to 0.
+                </p>
+                <Input
+                  id="comp-transfer"
+                  type="number"
+                  step="1"
+                  className="w-32"
+                  value={form.transfer_time_minutes ?? ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      transfer_time_minutes: parseInt(e.target.value) || 0,
+                    })
+                  }
+                />
+                {errors.transfer_time_minutes && (
+                  <p className="text-xs text-destructive">
+                    {errors.transfer_time_minutes}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           <DialogFooter>
             <Button

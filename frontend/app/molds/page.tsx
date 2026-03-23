@@ -1,11 +1,21 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Plus, Pencil, Trash2 } from "lucide-react"
+import { useEffect, useState, useMemo } from "react"
+import { Plus, Pencil, Trash2, Search, Upload } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { NoPlanState } from "@/components/no-plan-state"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { ExcelImportDialog } from "@/components/excel-import-dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -26,21 +36,28 @@ import {
 } from "@/components/ui/alert-dialog"
 import { MoldFormDialog } from "@/components/mold-form-dialog"
 import { getActivePlan, updateActivePlanMolds } from "@/lib/storage"
-import type { Mold, Plan } from "@/lib/types"
+import type { Mold, Plan, Component } from "@/lib/types"
 import { toast } from "sonner"
 
 export default function MoldsPage() {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [molds, setLocal] = useState<Mold[]>([])
+  const [components, setComponents] = useState<Component[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Mold | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
+
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState("")
+  const [groupFilter, setGroupFilter] = useState<"all" | "small" | "medium" | "large">("all")
 
   useEffect(() => {
     const activePlan = getActivePlan()
     setPlan(activePlan)
     setLocal(activePlan?.molds ?? [])
+    setComponents(activePlan?.components ?? [])
     setLoaded(true)
   }, [])
 
@@ -67,6 +84,43 @@ export default function MoldsPage() {
     setDeleteTarget(null)
   }
 
+  function handleImport(data: Mold[], mode: "replace" | "append") {
+    if (mode === "replace") {
+      persist(data)
+      toast.success(`Imported ${data.length} molds (replaced all)`)
+    } else {
+      const existingIds = new Set(molds.map((m) => m.id))
+      const newMolds = data.filter((m) => !existingIds.has(m.id))
+      const skipped = data.length - newMolds.length
+      persist([...molds, ...newMolds])
+      toast.success(
+        `Imported ${newMolds.length} molds${skipped > 0 ? ` (${skipped} duplicates skipped)` : ""}`
+      )
+    }
+  }
+
+  // Filter molds
+  const filteredMolds = useMemo(() => {
+    let result = molds
+
+    // Search by ID or name
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      result = result.filter(
+        (m) =>
+          m.id.toLowerCase().includes(q) ||
+          m.name.toLowerCase().includes(q)
+      )
+    }
+
+    // Filter by group
+    if (groupFilter !== "all") {
+      result = result.filter((m) => m.group === groupFilter)
+    }
+
+    return result
+  }, [molds, searchQuery, groupFilter])
+
   if (!loaded) return null
 
   if (!plan) {
@@ -88,19 +142,73 @@ export default function MoldsPage() {
         description={`Managing molds for "${plan.name}"`}
       />
       <div className="flex-1 p-4 md:p-6 flex flex-col gap-4 overflow-y-auto">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            {molds.length} mold{molds.length !== 1 && "s"}
+            {filteredMolds.length} of {molds.length} mold{molds.length !== 1 && "s"}
           </p>
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setDialogOpen(true)
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Mold
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setImportDialogOpen(true)}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Import from Excel
+            </Button>
+            <Button
+              onClick={() => {
+                setEditing(null)
+                setDialogOpen(true)
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Mold
+            </Button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-end gap-4 p-3 rounded-lg border bg-muted/30">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Search</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by ID or name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 w-48 h-8"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Machine Group</Label>
+            <Select value={groupFilter} onValueChange={(v) => setGroupFilter(v as typeof groupFilter)}>
+              <SelectTrigger className="w-32 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Groups</SelectItem>
+                <SelectItem value="small">Small</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="large">Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {(searchQuery || groupFilter !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery("")
+                setGroupFilter("all")
+              }}
+              className="h-8"
+            >
+              Clear filters
+            </Button>
+          )}
         </div>
 
         <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
@@ -116,21 +224,24 @@ export default function MoldsPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Group</TableHead>
                 <TableHead className="text-right">Tonnage</TableHead>
+                <TableHead>Component IDs</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {molds.length === 0 ? (
+              {filteredMolds.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="text-center py-8 text-muted-foreground"
                   >
-                    No molds yet. Add one to get started.
+                    {molds.length === 0
+                      ? "No molds yet. Add one to get started."
+                      : "No molds match the current filters."}
                   </TableCell>
                 </TableRow>
               ) : (
-                molds.map((m) => (
+                filteredMolds.map((m) => (
                   <TableRow key={m.id}>
                     <TableCell className="font-mono text-sm">{m.id}</TableCell>
                     <TableCell className="font-medium">{m.name}</TableCell>
@@ -140,6 +251,32 @@ export default function MoldsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">{m.tonnage}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(!m.component_ids || m.component_ids.length === 0) ? (
+                          <span className="text-xs text-muted-foreground">
+                            None
+                          </span>
+                        ) : (
+                          <>
+                            {m.component_ids.slice(0, 2).map((c) => (
+                              <Badge
+                                key={c}
+                                variant="outline"
+                                className="text-xs font-mono"
+                              >
+                                {c}
+                              </Badge>
+                            ))}
+                            {m.component_ids.length > 2 && (
+                              <Badge variant="secondary" className="text-xs">
+                                +{m.component_ids.length - 2} more
+                              </Badge>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button
@@ -176,7 +313,15 @@ export default function MoldsPage() {
         onOpenChange={setDialogOpen}
         mold={editing}
         existingIds={molds.map((m) => m.id)}
+        allComponents={components}
         onSave={handleSave}
+      />
+
+      <ExcelImportDialog<Mold>
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        type="molds"
+        onImport={handleImport}
       />
 
       <AlertDialog

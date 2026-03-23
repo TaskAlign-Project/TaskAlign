@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  Circle,
   Cog,
   Box,
   Puzzle,
@@ -22,6 +23,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Table,
   TableBody,
@@ -123,6 +125,14 @@ export default function PlanSummaryPage() {
     ? Object.values(latestRun.result.unmet).reduce((s, v) => s + v, 0)
     : 0
 
+  // Finished vs unfinished components
+  const finishedComponents = plan.components.filter(
+    (c) => (c.finished ?? 0) >= c.quantity && c.quantity > 0
+  )
+  const unfinishedComponents = plan.components.filter(
+    (c) => (c.finished ?? 0) < c.quantity || c.quantity === 0
+  )
+
   return (
     <div className="flex flex-col h-full">
       <AppHeader
@@ -206,6 +216,10 @@ export default function PlanSummaryPage() {
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <SummaryCard
+            label="Start Date"
+            value={plan.setup.current_date ? new Date(plan.setup.current_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "-"}
+          />
+          <SummaryCard
             label="Machines"
             value={String(plan.machines.length)}
             subValue={
@@ -234,6 +248,83 @@ export default function PlanSummaryPage() {
               />
             </>
           )}
+        </div>
+
+        {/* Component Status */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2 text-emerald-600">
+                <CheckCircle2 className="h-4 w-4" />
+                Finished Components ({finishedComponents.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {finishedComponents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No components have met their required quantity yet.
+                </p>
+              ) : (
+                <ScrollArea className="h-32">
+                  <div className="flex flex-col gap-1">
+                    {finishedComponents.map((c) => (
+                      <div
+                        key={c.id}
+                        className="flex items-center gap-2 text-sm py-1 px-2 rounded bg-emerald-500/10"
+                      >
+                        <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                        <span className="font-mono text-xs">{c.id}</span>
+                        <span className="text-muted-foreground truncate flex-1">{c.name}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          Due: {c.due_date ? new Date(c.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {c.finished?.toLocaleString()}/{c.quantity.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2 text-amber-600">
+                <Circle className="h-4 w-4" />
+                Unfinished Components ({unfinishedComponents.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {unfinishedComponents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  All components have met their required quantity.
+                </p>
+              ) : (
+                <ScrollArea className="h-32">
+                  <div className="flex flex-col gap-1">
+                    {unfinishedComponents.map((c) => (
+                      <div
+                        key={c.id}
+                        className="flex items-center gap-2 text-sm py-1 px-2 rounded bg-amber-500/10"
+                      >
+                        <Circle className="h-3 w-3 text-amber-600 shrink-0" />
+                        <span className="font-mono text-xs">{c.id}</span>
+                        <span className="text-muted-foreground truncate flex-1">{c.name}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          Due: {c.due_date ? new Date(c.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {(c.finished ?? 0).toLocaleString()}/{c.quantity.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Edit inputs links */}

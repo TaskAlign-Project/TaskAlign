@@ -14,7 +14,10 @@ export interface Mold {
   name: string
   group: "small" | "medium" | "large"
   tonnage: number
+  component_ids: string[] // Components that use this mold
 }
+
+export type DependencyMode = "wait" | "parallel"
 
 export interface Component {
   id: string
@@ -24,15 +27,21 @@ export interface Component {
   cycle_time_sec: number
   mold_id: string
   color: string
-  due_day: number
+  start_date: string // ISO date string (YYYY-MM-DD)
+  due_date: string   // ISO date string (YYYY-MM-DD)
   lead_time_days: number
   prerequisites: string[]
+  dependency_mode: DependencyMode
+  transfer_time_minutes: number
+  order_codes: string[] // Order codes associated with this component
 }
 
 export interface PlanSetup {
   month_days: number
-  mold_change_time_hours: number
-  color_change_time_hours: number
+  current_date: string // ISO date string (YYYY-MM-DD) - the start date of the schedule
+  start_time: string   // Time string (HH:MM) - the time of day when factory begins work
+  mold_change_time_minutes: number
+  color_change_time_minutes: number
   pop_size: number
   n_generations: number
   mutation_rate: number
@@ -41,8 +50,8 @@ export interface PlanSetup {
 // Schedule request payload
 export interface ScheduleRequest {
   month_days: number
-  mold_change_time_hours: number
-  color_change_time_hours: number
+  mold_change_time_minutes: number
+  color_change_time_minutes: number
   machines: Machine[]
   molds: Mold[]
   components: Component[]
@@ -57,7 +66,7 @@ export interface Assignment {
   machine_id: string
   machine_name: string
   sequence_in_day: number
-  task_type: "CHANGE_COLOR" | "CHANGE_MOLD" | "WAIT" | "PRODUCE"
+  task_type: "CHANGE_COLOR" | "CHANGE_MOLD" | "WAIT" | "PRODUCE" | "TRANSFER"
   start_hour: number
   end_hour: number
   used_hours: number
@@ -90,10 +99,11 @@ export interface PlanRun {
   created_at: string
   mode: "fresh" | "resume"
   note?: string
-  request_snapshot: {
+  request_snapshot?: {
     month_days: number
-    mold_change_time_hours: number
-    color_change_time_hours: number
+    current_date?: string
+    mold_change_time_minutes: number
+    color_change_time_minutes: number
     pop_size: number
     n_generations: number
     mutation_rate: number

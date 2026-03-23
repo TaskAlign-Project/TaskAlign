@@ -60,6 +60,7 @@ import {
   DEMO_RESULT,
   storeResult,
 } from "@/lib/schedule-utils"
+import { formatDayAsDate } from "@/lib/gantt"
 
 // ---- Task-type styling ----
 const TASK_COLORS: Record<string, { bar: string; badge: string; label: string }> = {
@@ -83,9 +84,14 @@ const TASK_COLORS: Record<string, { bar: string; badge: string; label: string }>
     badge: "bg-sky-500/15 text-sky-700 border-sky-500/30",
     label: "Color Change",
   },
+  TRANSFER: {
+    bar: "bg-purple-500/15 border-purple-500/30",
+    badge: "bg-purple-500/15 text-purple-700 border-purple-500/30",
+    label: "Transfer",
+  },
 }
 
-const TASK_TYPES = ["PRODUCE", "CHANGE_COLOR", "CHANGE_MOLD", "WAIT"] as const
+const TASK_TYPES = ["PRODUCE", "CHANGE_COLOR", "CHANGE_MOLD", "WAIT", "TRANSFER"] as const
 
 function fmt(n: number | undefined | null, decimals = 2): string {
   if (n === null || n === undefined) return ""
@@ -214,13 +220,13 @@ function OutputContent({
   onLoadDemo: () => void
 }) {
   const data = currentRun.result
+  const startDate = currentRun.request_snapshot?.current_date ?? plan.setup.current_date ?? "2026-01-01"
   const [filterDayStart, setFilterDayStart] = useState("all")
   const [filterDayEnd, setFilterDayEnd] = useState("all")
   const [filterMachine, setFilterMachine] = useState("all")
   const [filterMachineGroup, setFilterMachineGroup] = useState("all")
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set(TASK_TYPES))
   const [searchQuery, setSearchQuery] = useState("")
-  const [sortMode, setSortMode] = useState<"day" | "machine">("day")
 
   // Derived data
   const unmetEntries = Object.entries(data.unmet ?? {})
@@ -295,18 +301,12 @@ function OutputContent({
           a.machine_id.toLowerCase().includes(q)
       )
     }
-    // Sort
-    if (sortMode === "day") {
-      arr = [...arr].sort(
-        (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour - b.start_hour
-      )
-    } else {
-      arr = [...arr].sort(
-        (a, b) => a.machine_id.localeCompare(b.machine_id) || a.day - b.day || a.sequence_in_day - b.sequence_in_day
-      )
-    }
+    // Sort by day, then machine, then start hour
+    arr = [...arr].sort(
+      (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour - b.start_hour
+    )
     return arr
-  }, [data.assignments, filterDayStart, filterDayEnd, filterMachine, filterMachineGroup, machineGroupMap, activeTypes, searchQuery, sortMode])
+  }, [data.assignments, filterDayStart, filterDayEnd, filterMachine, filterMachineGroup, machineGroupMap, activeTypes, searchQuery])
 
   const timelineGrouped = useMemo(
     () => groupByMachineThenDay(filtered),
@@ -436,31 +436,31 @@ function OutputContent({
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Day Range</Label>
+            <Label className="text-xs">Date Range</Label>
             <div className="flex items-center gap-1">
               <Select value={filterDayStart} onValueChange={setFilterDayStart}>
-                <SelectTrigger className="w-24 h-8 text-xs">
+                <SelectTrigger className="w-32 h-8 text-xs">
                   <SelectValue placeholder="Start" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
                   {days.map((d) => (
                     <SelectItem key={d} value={String(d)}>
-                      Day {d}
+                      {formatDayAsDate(d, startDate)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <span className="text-xs text-muted-foreground">to</span>
               <Select value={filterDayEnd} onValueChange={setFilterDayEnd}>
-                <SelectTrigger className="w-24 h-8 text-xs">
+                <SelectTrigger className="w-32 h-8 text-xs">
                   <SelectValue placeholder="End" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
                   {days.map((d) => (
                     <SelectItem key={d} value={String(d)}>
-                      Day {d}
+                      {formatDayAsDate(d, startDate)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -533,18 +533,6 @@ function OutputContent({
               />
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Sort</Label>
-            <Select value={sortMode} onValueChange={(v) => setSortMode(v as "day" | "machine")}>
-              <SelectTrigger className="w-40 h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="day">Day, then Machine</SelectItem>
-                <SelectItem value="machine">Machine, then Day</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           <p className="text-xs text-muted-foreground pb-1">
             {filtered.length} of {data.assignments.length} assignments
           </p>
@@ -565,6 +553,7 @@ function OutputContent({
               assignments={filtered}
               dayStart={filterDayStart !== "all" ? Number(filterDayStart) : undefined}
               dayEnd={filterDayEnd !== "all" ? Number(filterDayEnd) : undefined}
+              startDate={startDate}
             />
           </TabsContent>
 
@@ -628,7 +617,7 @@ function OutputContent({
                       <TableRow
                         key={`${a.day}-${a.machine_id}-${a.sequence_in_day}-${i}`}
                       >
-                        <TableCell className="text-xs">{a.day}</TableCell>
+                        <TableCell className="text-xs">{formatDayAsDate(a.day, startDate)}</TableCell>
                         <TableCell className="text-xs">
                           <span className="font-mono">{a.machine_id}</span>{" "}
                           <span className="text-muted-foreground">
