@@ -13,6 +13,7 @@ import {
   ChevronRight,
   AlertTriangle,
   History,
+  Settings2,
 } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { NoPlanState } from "@/components/no-plan-state"
@@ -375,6 +376,12 @@ function OutputContent({
           <Button variant="outline" size="sm" asChild>
             <Link href={`/plans/${plan.id}`}>
               View Plan Details
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/plan/adjust">
+              <Settings2 className="mr-2 h-3.5 w-3.5" />
+              Adjust Manually
             </Link>
           </Button>
           <Button

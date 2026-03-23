@@ -14,6 +14,7 @@ import {
   Play,
   Eye,
   Settings,
+  Settings2,
   History,
   AlertTriangle,
   Pencil,
@@ -204,12 +205,20 @@ export default function PlanSummaryPage() {
             </Button>
           )}
           {latestRun && (
-            <Button size="sm" variant="outline" asChild>
-              <Link href="/plan/output">
-                <Eye className="mr-2 h-3.5 w-3.5" />
-                View Latest Output
-              </Link>
-            </Button>
+            <>
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/plan/output">
+                  <Eye className="mr-2 h-3.5 w-3.5" />
+                  View Latest Output
+                </Link>
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/plan/adjust">
+                  <Settings2 className="mr-2 h-3.5 w-3.5" />
+                  Adjust Manually
+                </Link>
+              </Button>
+            </>
           )}
         </div>
 
