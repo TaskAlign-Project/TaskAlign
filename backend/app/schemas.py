@@ -78,3 +78,20 @@ class Component(ComponentBase):
     id: str
     plan_id: str
     model_config = ConfigDict(from_attributes=True)
+
+# Run Schemas
+class RunBase(BaseModel):
+    run_name: Optional[str] = None
+    score: Optional[float] = None
+    status: str = "completed"
+    unmet: Optional[Any] = None
+    assignments: Optional[Any] = None
+
+class RunCreate(RunBase):
+    pass
+
+class Run(RunBase):
+    id: str
+    plan_id: str
+    run_at: datetime
+    model_config = ConfigDict(from_attributes=True)
