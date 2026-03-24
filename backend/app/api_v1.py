@@ -7,6 +7,177 @@ from app import schemas
 
 router = APIRouter()
 
+from fastapi import UploadFile, File
+import openpyxl
+import io
+
+# --- IMPORT MACHINES FROM EXCEL ---
+@router.post("/machines/import")
+def import_machines(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    contents = file.file.read()
+    wb = openpyxl.load_workbook(io.BytesIO(contents))
+    ws = wb.active
+
+    headers = [cell.value for cell in ws[1]]
+    print(f"Headers found: {headers}")
+    print(f"Total rows: {ws.max_row}")
+
+    created = []
+    skipped = []
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        print(f"Raw row: {row}")
+        data = dict(zip(headers, row))
+        print(f"Row data: {data}")
+        print(f"id value: {data.get('id')}, code value: {data.get('code')}")
+
+        code = data.get("id") or data.get("code")
+        print(f"Resolved code: {code}")
+
+        if not code:
+            print("SKIPPING: no code found")
+            continue
+
+        existing = db.query(db_models.Machine).filter(db_models.Machine.code == str(code)).first()
+        if existing:
+            print(f"SKIPPING: {code} already exists")
+            skipped.append(code)
+            continue
+
+        print(f"CREATING: {code}")
+        db_machine = db_models.Machine(
+            code=str(code),
+            name=str(data.get("name") or code),
+            group=str(data.get("group", "medium")),
+            tonnage=int(data.get("tonnage", 0)),
+            hours_per_day=float(data.get("hours_per_day", 24.0)),
+            efficiency=float(data.get("efficiency", 1.0)),
+            status=str(data.get("status", "available")),
+        )
+        db.add(db_machine)
+        created.append(code)
+
+    db.commit()
+    return {"created": len(created), "skipped": len(skipped), "codes": created}
+
+
+# --- IMPORT MOLDS FROM EXCEL ---
+@router.post("/molds/import")
+def import_molds(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    contents = file.file.read()
+    wb = openpyxl.load_workbook(io.BytesIO(contents))
+    ws = wb.active
+
+    headers = [str(cell.value).strip() if cell.value else None for cell in ws[1]]
+    created = []
+    skipped = []
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        data = dict(zip(headers, row))
+        
+        # Accept 'id' or 'code' from Excel
+        code = data.get("id") or data.get("code")
+        if not code or str(code).lower() == "none":
+            continue
+            
+        code = str(code).strip()
+
+        existing = db.query(db_models.Mold).filter(db_models.Mold.code == code).first()
+        if existing:
+            skipped.append(code)
+            continue
+
+        db_mold = db_models.Mold(
+            code=code,
+            name=str(data.get("name") or code),
+            group=str(data.get("group", "medium")).strip(),
+            tonnage=int(data.get("tonnage", 0)),
+            component_id=str(data.get("component_id")).strip() if data.get("component_id") else None,
+        )
+        db.add(db_mold)
+        created.append(code)
+
+    db.commit()
+    return {"created": len(created), "skipped": len(skipped), "codes": created}
+
+
+# --- IMPORT COMPONENTS FROM EXCEL ---
+@router.post("/plans/{plan_id}/components/import")
+def import_components(plan_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    db_plan = db.query(db_models.Plan).filter(db_models.Plan.id == plan_id).first()
+    if not db_plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    contents = file.file.read()
+    wb = openpyxl.load_workbook(io.BytesIO(contents))
+    ws = wb.active
+
+    headers = [str(cell.value).strip() if cell.value else None for cell in ws[1]]
+    created = []
+    skipped = []
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        data = dict(zip(headers, row))
+        
+        # Accept 'id' or 'component_id' from Excel
+        comp_id = data.get("id") or data.get("component_id")
+        if not comp_id or str(comp_id).lower() == "none":
+            continue
+            
+        comp_id = str(comp_id).strip()
+
+        # Check if already exists in THIS plan
+        existing = db.query(db_models.Component).filter(
+            db_models.Component.plan_id == plan_id,
+            db_models.Component.component_id == comp_id
+        ).first()
+        
+        if existing:
+            skipped.append(comp_id)
+            continue
+
+        # Normalize dependency_mode (Excel 'wait' -> DB 'wait_all')
+        raw_mode = str(data.get("dependency_mode", "wait_all")).strip().lower()
+        dependency_mode = "parallel" if raw_mode == "parallel" else "wait_all"
+
+        # Handle column name variants for transfer time
+        transfer_time = int(
+            data.get("dependency_transfer_time_minutes") 
+            or data.get("transfer_time_minutes") 
+            or 0
+        )
+
+        # Handle prerequisites (nan, None, or comma-separated string)
+        raw_prereq = data.get("prerequisites")
+        if not raw_prereq or str(raw_prereq).lower() in ("nan", "none", ""):
+            prerequisites = []
+        elif isinstance(raw_prereq, list):
+            prerequisites = raw_prereq
+        else:
+            prerequisites = [p.strip() for p in str(raw_prereq).split(",") if p.strip()]
+
+        db_component = db_models.Component(
+            plan_id=plan_id,
+            component_id=comp_id,
+            order_code=str(data.get("order_code")).strip() if data.get("order_code") else None,
+            name=str(data.get("name") or comp_id),
+            quantity=int(data.get("quantity", 0)),
+            finished=int(data.get("finished", 0)),
+            cycle_time_sec=float(data.get("cycle_time_sec", 0)),
+            mold_id=str(data.get("mold_id", "")).strip(),
+            color=str(data.get("color", "")).strip(),
+            start_date=str(data.get("start_date")).strip() if data.get("start_date") else None,
+            due_date=str(data.get("due_date", "")).strip(),
+            dependency_mode=dependency_mode,
+            dependency_transfer_time_minutes=transfer_time,
+            prerequisites=prerequisites,
+        )
+        db.add(db_component)
+        created.append(comp_id)
+
+    db.commit()
+    return {"created": len(created), "skipped": len(skipped), "component_ids": created}
+
 # --- PLANS ---
 
 @router.get("/plans", response_model=List[schemas.Plan])
