@@ -67,8 +67,8 @@ export interface Assignment {
   machine_name: string
   sequence_in_day: number
   task_type: "CHANGE_COLOR" | "CHANGE_MOLD" | "WAIT" | "PRODUCE" | "TRANSFER"
-  start_hour: number
-  end_hour: number
+  start_hour_clock: number
+  end_hour_clock: number
   used_hours: number
   utilization?: number
   component_id?: string

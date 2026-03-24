@@ -246,10 +246,10 @@ export function ScheduleResults({ data }: { data: ScheduleResponse }) {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs">
-                        {a.start_hour.toFixed(1)}
+                        {a.start_hour_clock.toFixed(1)}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs">
-                        {a.end_hour.toFixed(1)}
+                        {a.end_hour_clock.toFixed(1)}
                       </TableCell>
                       <TableCell className="text-right">
                         {a.used_hours.toFixed(1)}
@@ -331,8 +331,8 @@ export function ScheduleResults({ data }: { data: ScheduleResponse }) {
                                   )}
                                   <span className="opacity-70">
                                     {" "}
-                                    {t.start_hour.toFixed(1)}-
-                                    {t.end_hour.toFixed(1)}h
+                                    {t.start_hour_clock.toFixed(1)}-
+                                    {t.end_hour_clock.toFixed(1)}h
                                   </span>
                                 </div>
                               ))}

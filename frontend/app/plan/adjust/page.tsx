@@ -336,7 +336,7 @@ function AdjustContent({
       )
     }
     return arr.sort(
-      (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour - b.start_hour
+      (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour_clock - b.start_hour_clock
     )
   }, [assignments, filterDayStart, filterDayEnd, filterMachineGroup, machineGroupMap, searchQuery])
 
@@ -408,8 +408,8 @@ function AdjustContent({
       _originalIndex: newIndex,
       _modified: true,
       day: taskToDuplicate.day + 1, // Default to next day
-      start_hour: 0, // Start at beginning of day
-      end_hour: taskToDuplicate.end_hour - taskToDuplicate.start_hour, // Same duration
+      start_hour_clock: 0, // Start at beginning of day
+      end_hour_clock: taskToDuplicate.end_hour_clock - taskToDuplicate.start_hour_clock, // Same duration
       used_hours: taskToDuplicate.used_hours,
     }
 
@@ -902,8 +902,8 @@ function DraggableTask({
   const dragStartRef = useRef({ x: 0, y: 0, startHour: 0, machineIdx: 0 })
 
   // Calculate position
-  const clampedStart = Math.max(0, Math.min(24, task.start_hour))
-  const clampedEnd = Math.max(0, Math.min(24, task.end_hour))
+  const clampedStart = Math.max(0, Math.min(24, task.start_hour_clock))
+  const clampedEnd = Math.max(0, Math.min(24, task.end_hour_clock))
   const absStart = toAbsoluteHour(task.day, clampedStart)
   const absEnd = toAbsoluteHour(task.day, clampedEnd)
   const leftPct = ((absStart - range.rangeStart) / range.totalHours) * 100
@@ -918,13 +918,13 @@ function DraggableTask({
       dragStartRef.current = {
         x: e.clientX,
         y: e.clientY,
-        startHour: task.start_hour,
+        startHour: task.start_hour_clock,
         machineIdx: currentRowIdx,
       }
       setDragging(true)
       setDragOffset({ x: 0, y: 0 })
     },
-    [task.start_hour, currentRowIdx]
+    [task.start_hour_clock, currentRowIdx]
   )
 
   useEffect(() => {
@@ -950,7 +950,7 @@ function DraggableTask({
       let newRowIdx = dragStartRef.current.machineIdx + rowDelta
       newRowIdx = Math.max(0, Math.min(machineRows.length - 1, newRowIdx))
 
-      const duration = task.end_hour - task.start_hour
+      const duration = task.end_hour_clock - task.start_hour_clock
 
       // Clamp to day boundaries
       if (newStartHour < 0) newStartHour = 0
@@ -959,9 +959,9 @@ function DraggableTask({
       const newMachine = machineRows[newRowIdx]
       const updates: Partial<EditableAssignment> = {}
 
-      if (newStartHour !== task.start_hour) {
-        updates.start_hour = newStartHour
-        updates.end_hour = newStartHour + duration
+      if (newStartHour !== task.start_hour_clock) {
+        updates.start_hour_clock = newStartHour
+        updates.end_hour_clock = newStartHour + duration
         updates.used_hours = duration
       }
 
@@ -1057,7 +1057,7 @@ function TaskInspector({
   hasError: boolean
 }) {
   const colors = GANTT_COLORS[task.task_type] ?? GANTT_COLORS.WAIT
-  const duration = task.end_hour - task.start_hour
+  const duration = task.end_hour_clock - task.start_hour_clock
 
   // Store the original cycle time (seconds per unit) - calculated once from original task data
   // This ensures we always have a reliable cycle time even after qty changes
@@ -1079,8 +1079,8 @@ function TaskInspector({
   // Local form state for controlled inputs
   const [dateValue, setDateValue] = useState(formatDateFromDay(task.day, startDate))
   const [machineValue, setMachineValue] = useState(task.machine_id)
-  const [startTimeValue, setStartTimeValue] = useState(formatTimeHHMM(task.start_hour))
-  const [endTimeValue, setEndTimeValue] = useState(formatTimeHHMM(task.end_hour))
+  const [startTimeValue, setStartTimeValue] = useState(formatTimeHHMM(task.start_hour_clock))
+  const [endTimeValue, setEndTimeValue] = useState(formatTimeHHMM(task.end_hour_clock))
   const [producedQtyValue, setProducedQtyValue] = useState(String(task.produced_qty ?? 0))
   const [localError, setLocalError] = useState<string | null>(null)
 
@@ -1088,11 +1088,11 @@ function TaskInspector({
   useEffect(() => {
     setDateValue(formatDateFromDay(task.day, startDate))
     setMachineValue(task.machine_id)
-    setStartTimeValue(formatTimeHHMM(task.start_hour))
-    setEndTimeValue(formatTimeHHMM(task.end_hour))
+    setStartTimeValue(formatTimeHHMM(task.start_hour_clock))
+    setEndTimeValue(formatTimeHHMM(task.end_hour_clock))
     setProducedQtyValue(String(task.produced_qty ?? 0))
     setLocalError(null)
-  }, [task._originalIndex, task.day, task.machine_id, task.start_hour, task.end_hour, task.produced_qty, startDate])
+  }, [task._originalIndex, task.day, task.machine_id, task.start_hour_clock, task.end_hour_clock, task.produced_qty, startDate])
 
   // Apply date change
   function handleDateChange(newDate: string) {
@@ -1140,8 +1140,8 @@ function TaskInspector({
     
     setEndTimeValue(formatTimeHHMM(newEndHour))
     onUpdate({ 
-      start_hour: newStartHour, 
-      end_hour: newEndHour,
+      start_hour_clock: newStartHour, 
+      end_hour_clock: newEndHour,
       used_hours: newEndHour - newStartHour,
     })
   }
@@ -1155,13 +1155,13 @@ function TaskInspector({
       if (originalCycleTimeSec > 0) {
         // Calculate new duration in hours: qty * cycle_time_sec / 3600
         const newDurationHours = (qty * originalCycleTimeSec) / 3600
-        const newEndHour = Math.min(24, task.start_hour + newDurationHours)
+        const newEndHour = Math.min(24, task.start_hour_clock + newDurationHours)
         
         setEndTimeValue(formatTimeHHMM(newEndHour))
         onUpdate({ 
           produced_qty: qty,
-          end_hour: newEndHour,
-          used_hours: newEndHour - task.start_hour,
+          end_hour_clock: newEndHour,
+          used_hours: newEndHour - task.start_hour_clock,
         })
       } else {
         // No cycle time available, just update qty without changing duration
@@ -1247,7 +1247,7 @@ function TaskInspector({
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Duration</span>
           <span className="font-mono">
-            {formatHourAMPM(task.start_hour)} - {formatHourAMPM(task.end_hour)} ({task.used_hours.toFixed(2)}h)
+            {formatHourAMPM(task.start_hour_clock)} - {formatHourAMPM(task.end_hour_clock)} ({task.used_hours.toFixed(2)}h)
           </span>
         </div>
 
@@ -1367,7 +1367,7 @@ function groupByMachineEditable(assignments: EditableAssignment[]): EditableMach
   for (const row of map.values()) {
     row.tasks.sort(
       (a, b) =>
-        toAbsoluteHour(a.day, a.start_hour) - toAbsoluteHour(b.day, b.start_hour)
+        toAbsoluteHour(a.day, a.start_hour_clock) - toAbsoluteHour(b.day, b.start_hour_clock)
     )
   }
   return [...map.values()].sort((a, b) => a.machineId.localeCompare(b.machineId))
@@ -1392,7 +1392,7 @@ function findOverlaps(assignments: EditableAssignment[]): Set<string> {
       for (let j = i + 1; j < tasks.length; j++) {
         const a = tasks[i]
         const b = tasks[j]
-        if (a.start_hour < b.end_hour && b.start_hour < a.end_hour) {
+        if (a.start_hour_clock < b.end_hour_clock && b.start_hour_clock < a.end_hour_clock) {
           overlaps.add(taskKey(a))
           overlaps.add(taskKey(b))
         }
@@ -1436,7 +1436,7 @@ function validatePlan(
 
   // Check hours exceed day
   for (const a of assignments) {
-    if (a.end_hour > 24) {
+    if (a.end_hour_clock > 24) {
       violations.push({
         severity: "error",
         type: "Time Overflow",

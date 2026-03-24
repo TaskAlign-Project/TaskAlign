@@ -1,7 +1,8 @@
 # main.py
+from datetime import date, time
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Literal
 
 from app.models.models import Machine, Mold, ProductComponent
 from app.services.ga_scheduler import ga_optimize_v2
@@ -16,6 +17,7 @@ class MachineIn(BaseModel):
     tonnage: int
     hours_per_day: float = 21.0
     efficiency: float = 0.85
+    status: Literal["available", "unavailable"] = "available"
 
 
 class MoldIn(BaseModel):
@@ -23,26 +25,43 @@ class MoldIn(BaseModel):
     name: str
     group: str = Field(..., description="small | medium | large")
     tonnage: int
+    component_id: Optional[str] = None
 
 
 class ComponentIn(BaseModel):
     id: str
     name: str
+
     quantity: int
+    finished: int = 0
+
     cycle_time_sec: float
     mold_id: str
     color: str
-    due_day: int
+
+    start_date: Optional[date] = None   # default handled by scheduler = current_date
+    due_date: date                      # required
+
     lead_time_days: int = 2
     prerequisites: List[str] = []
+
+    dependency_mode: Literal["wait_all", "parallel"] = "wait_all"
+    dependency_transfer_time_minutes: int = 0
+
+    order_code: Optional[str] = None
     status: str = "pending"
 
 
 class ScheduleV2Request(BaseModel):
     month_days: int = 30
 
-    mold_change_time_hours: float = 0.0
-    color_change_time_hours: float = 0.0
+    # NEW: minutes only
+    mold_change_time_minutes: int = 0
+    color_change_time_minutes: int = 0
+
+    # NEW: real calendar anchor + shift start
+    current_date: date
+    start_time: time = time(0, 0, 0)
 
     machines: List[MachineIn]
     molds: List[MoldIn]
@@ -65,8 +84,10 @@ def schedule_v2(request: ScheduleV2Request) -> Dict[str, Any]:
             machines=machines,
             molds=molds,
             month_days=request.month_days,
-            mold_change_time_hours=request.mold_change_time_hours,
-            color_change_time_hours=request.color_change_time_hours,
+            mold_change_time_minutes=request.mold_change_time_minutes,
+            color_change_time_minutes=request.color_change_time_minutes,
+            current_date=request.current_date,
+            start_time=request.start_time,
             pop_size=request.pop_size,
             n_generations=request.n_generations,
             mutation_rate=request.mutation_rate,

@@ -166,8 +166,8 @@ export function splitTasksAcrossDays(tasks: Assignment[]): SplitTask[] {
   
   for (const task of tasks) {
     const startDay = task.day
-    let startHour = task.start_hour
-    let endHour = task.end_hour
+    let startHour = task.start_hour_clock
+    let endHour = task.end_hour_clock
     
     // Normalize negative start hours (shouldn't happen but just in case)
     if (startHour < 0) startHour = 0
@@ -205,8 +205,8 @@ export function splitTasksAcrossDays(tasks: Assignment[]): SplitTask[] {
           result.push({
             ...task,
             day: currentDay,
-            start_hour: dayStartHour,
-            end_hour: dayEndHour,
+            start_hour_clock: dayStartHour,
+            end_hour_clock: dayEndHour,
             used_hours: hoursThisDay,
             originalTask: task,
             splitIndex,

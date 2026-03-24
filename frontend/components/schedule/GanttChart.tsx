@@ -382,7 +382,7 @@ function TaskTooltip({ task, startDate }: { task: Assignment; startDate: string 
         </span>
         <span className="text-muted-foreground">Time</span>
         <span className="font-mono">
-          {formatHourAMPM(task.start_hour)} &ndash; {formatHourAMPM(task.end_hour)}
+          {formatHourAMPM(task.start_hour_clock)} &ndash; {formatHourAMPM(task.end_hour_clock)}
         </span>
         <span className="text-muted-foreground">Duration</span>
         <span className="font-mono">{task.used_hours.toFixed(2)}h</span>

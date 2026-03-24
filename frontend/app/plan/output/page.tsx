@@ -304,7 +304,7 @@ function OutputContent({
     }
     // Sort by day, then machine, then start hour
     arr = [...arr].sort(
-      (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour - b.start_hour
+      (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour_clock - b.start_hour_clock
     )
     return arr
   }, [data.assignments, filterDayStart, filterDayEnd, filterMachine, filterMachineGroup, machineGroupMap, activeTypes, searchQuery])
@@ -644,10 +644,10 @@ function OutputContent({
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs text-right font-mono">
-                          {fmt(a.start_hour)}
+                          {fmt(a.start_hour_clock)}
                         </TableCell>
                         <TableCell className="text-xs text-right font-mono">
-                          {fmt(a.end_hour)}
+                          {fmt(a.end_hour_clock)}
                         </TableCell>
                         <TableCell className="text-xs text-right font-mono">
                           {fmt(a.used_hours)}
@@ -932,7 +932,7 @@ function MachineTimeline({
 }
 
 function DayRow({ day, tasks }: { day: number; tasks: Assignment[] }) {
-  const maxHour = Math.max(...tasks.map((t) => t.end_hour), 1)
+  const maxHour = Math.max(...tasks.map((t) => t.end_hour_clock), 1)
 
   return (
     <div className="rounded-md border bg-card/60 p-3">
@@ -952,7 +952,7 @@ function DayRow({ day, tasks }: { day: number; tasks: Assignment[] }) {
               >
                 <span className="font-semibold shrink-0">{t.task_type}</span>
                 <span className="text-muted-foreground shrink-0">
-                  {fmt(t.start_hour)}{"-"}{fmt(t.end_hour)}h
+                  {fmt(t.start_hour_clock)}{"-"}{fmt(t.end_hour_clock)}h
                 </span>
                 <span className="text-muted-foreground shrink-0">
                   ({fmt(t.used_hours)}h)
