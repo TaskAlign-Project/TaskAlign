@@ -38,7 +38,6 @@ class MachineCreate(MachineBase):
 
 class Machine(MachineBase):
     id: str
-    plan_id: str
     model_config = ConfigDict(from_attributes=True)
 
 # Mold Schemas
@@ -54,7 +53,6 @@ class MoldCreate(MoldBase):
 
 class Mold(MoldBase):
     id: str
-    plan_id: str
     model_config = ConfigDict(from_attributes=True)
 
 # Component Schemas

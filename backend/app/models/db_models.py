@@ -31,8 +31,6 @@ class Plan(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    machines = relationship("Machine", back_populates="plan", cascade="all, delete-orphan")
-    molds = relationship("Mold", back_populates="plan", cascade="all, delete-orphan")
     components = relationship("Component", back_populates="plan", cascade="all, delete-orphan")
     runs = relationship("Run", back_populates="plan", cascade="all, delete-orphan")
 
@@ -41,30 +39,24 @@ class Machine(Base):
     __tablename__ = "machines"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    plan_id = Column(String, ForeignKey("plans.id"), nullable=False)
-    code = Column(String, nullable=False)   # e.g. "M1"
+    code = Column(String, nullable=False, unique=True)
     name = Column(String)
-    group = Column(String)                  # "small" | "medium" | "large"
+    group = Column(String)
     tonnage = Column(Integer)
     hours_per_day = Column(Float, default=24.0)
     efficiency = Column(Float, default=1.0)
-    status = Column(String, default="available")  # "available" | "unavailable"
-
-    plan = relationship("Plan", back_populates="machines")
+    status = Column(String, default="available")
 
 
 class Mold(Base):
     __tablename__ = "molds"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    plan_id = Column(String, ForeignKey("plans.id"), nullable=False)
-    code = Column(String, nullable=False)   # e.g. "MO1"
+    code = Column(String, nullable=False, unique=True)
     name = Column(String)
     group = Column(String)
     tonnage = Column(Integer)
-    component_id = Column(String, nullable=True)  # base component this mold produces
-
-    plan = relationship("Plan", back_populates="molds")
+    component_id = Column(String, nullable=True)
 
 
 class Component(Base):
