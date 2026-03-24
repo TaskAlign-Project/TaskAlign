@@ -1,14 +1,30 @@
 # main.py
 from datetime import date, time
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Literal
 
 from app.models.models import Machine, Mold, ProductComponent
 from app.services.ga_scheduler import ga_optimize_v2
+from app.api_v1 import router as api_router
 
-app = FastAPI(title="Injection Molding Monthly Planning API")
+app = FastAPI(title="TaskAlign API")
 
+# CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Replace with frontend URL in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# DB-backed routes
+app.include_router(api_router, prefix="/api/v1")
+
+
+# ── Pydantic input models ──────────────────────────────────────────
 
 class MachineIn(BaseModel):
     id: str
@@ -31,45 +47,40 @@ class MoldIn(BaseModel):
 class ComponentIn(BaseModel):
     id: str
     name: str
-
     quantity: int
     finished: int = 0
-
     cycle_time_sec: float
     mold_id: str
     color: str
-
-    start_date: Optional[date] = None   # default handled by scheduler = current_date
-    due_date: date                      # required
-
+    start_date: Optional[date] = None
+    due_date: date
     lead_time_days: int = 2
     prerequisites: List[str] = []
-
     dependency_mode: Literal["wait_all", "parallel"] = "wait_all"
     dependency_transfer_time_minutes: int = 0
-
     order_code: Optional[str] = None
     status: str = "pending"
 
 
 class ScheduleV2Request(BaseModel):
     month_days: int = 30
-
-    # NEW: minutes only
     mold_change_time_minutes: int = 0
     color_change_time_minutes: int = 0
-
-    # NEW: real calendar anchor + shift start
     current_date: date
     start_time: time = time(0, 0, 0)
-
     machines: List[MachineIn]
     molds: List[MoldIn]
     components: List[ComponentIn]
-
     pop_size: int = 30
     n_generations: int = 80
     mutation_rate: float = 0.25
+
+
+# ── Algorithm endpoints ───────────────────────────────────────────────────────
+
+@app.get("/")
+def read_root():
+    return {"message": "TaskAlign API is running"}
 
 
 @app.post("/schedule_v2")
