@@ -53,3 +53,35 @@ export async function runSchedule(payload: ScheduleRequest): Promise<ScheduleRes
   if (!res.ok) throw new Error("Scheduling failed")
   return res.json()
 }
+
+// --- Machines API (Global) ---
+export const machinesApi = {
+  list: () => apiFetch<Machine[]>("/machines"),
+  get: (id: string) => apiFetch<Machine>(`/machines/${id}`),
+  create: (data: Partial<Machine>) =>
+    apiFetch<Machine>("/machines", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: Partial<Machine>) =>
+    apiFetch<Machine>(`/machines/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    apiFetch<{ message: string }>(`/machines/${id}`, { method: "DELETE" }),
+  
+  // New: Real File Upload for Import
+  import: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    const res = await fetch(`${BASE_URL}/api/v1/machines/import`, {
+      method: "POST",
+      body: formData, // Browser sets boundary automatically
+    });
+
+    if (!res.ok) throw new Error("Import failed");
+    return res.json();
+  }
+}

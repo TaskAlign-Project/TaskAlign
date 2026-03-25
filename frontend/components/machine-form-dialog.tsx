@@ -30,6 +30,7 @@ interface Props {
 
 const EMPTY: PlanMachine = {
   id: "",
+  code: "",
   name: "",
   group: "small",
   tonnage: 0,
@@ -50,7 +51,7 @@ export function MachineFormDialog({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    setForm(machine ?? EMPTY)
+    setForm(machine ? { ...EMPTY, ...machine, status: machine.status ?? "available" } : EMPTY)
     setErrors({})
   }, [machine, open])
 

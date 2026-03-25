@@ -2,12 +2,16 @@
 
 export interface Machine {
   id: string
+  code: string          // backend primary identifier
   name: string
   group: "small" | "medium" | "large"
   tonnage: number
   hours_per_day: number
   efficiency: number
+  status?: MachineStatus // backend returns this on Machine directly
 }
+
+export type MachineStatus = "available" | "unavailable"
 
 export interface Mold {
   id: string
@@ -89,8 +93,6 @@ export interface ScheduleResponse {
 }
 
 // ---- Plan-specific types ----
-
-export type MachineStatus = "available" | "unavailable"
 
 export type PlanMachine = Machine & { status: MachineStatus }
 
