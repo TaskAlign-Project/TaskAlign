@@ -1,4 +1,4 @@
-import type { ScheduleRequest, ScheduleResponse, Plan } from "./types"
+import type { ScheduleRequest, ScheduleResponse, Plan, Machine, Mold, Component } from "./types"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000"
 const API_V1 = `${BASE_URL}/api/v1`
@@ -83,5 +83,61 @@ export const machinesApi = {
 
     if (!res.ok) throw new Error("Import failed");
     return res.json();
+  }
+}
+
+// --- Molds API (Global) ---
+export const moldsApi = {
+  list: () => apiFetch<Mold[]>("/molds"),
+  get: (id: string) => apiFetch<Mold>(`/molds/${id}`),
+  create: (data: Partial<Mold>) =>
+    apiFetch<Mold>("/molds", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: Partial<Mold>) =>
+    apiFetch<Mold>(`/molds/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    apiFetch<{ message: string }>(`/molds/${id}`, { method: "DELETE" }),
+  import: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${BASE_URL}/api/v1/molds/import`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error("Import failed");
+    return res.json();
+  }
+}
+
+// --- Components API (Plan-based) ---
+export const componentsApi = {
+  list: () => apiFetch<Component[]>("/components"),
+  get: (id: string) => apiFetch<Component>(`/components/${id}`),
+  create: (data: Partial<Component>) =>
+    apiFetch<Component>("/components", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: Partial<Component>) =>
+    apiFetch<Component>(`/components/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    apiFetch<{ message: string }>(`/components/${id}`, { method: "DELETE" }),
+  import: async (file: File) => {
+    const formData = new FormData()
+    formData.append("file", file)
+    const res = await fetch(`${BASE_URL}/api/v1/components/import`, {
+      method: "POST",
+      body: formData,
+    })
+    if (!res.ok) throw new Error("Import failed")
+    return res.json()
   }
 }

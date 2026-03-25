@@ -81,16 +81,13 @@ export function MoldFormDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="mold-id">ID</Label>
+            <Label htmlFor="mold-code">Code (ID)</Label>
             <Input
-              id="mold-id"
-              value={form.id}
-              disabled={isEdit}
-              onChange={(e) => setForm({ ...form, id: e.target.value })}
+              id="mold-code"
+              value={form.code}
+              onChange={(e) => setForm({ ...form, code: e.target.value })}
+              placeholder="e.g. MLD-001"
             />
-            {errors.id && (
-              <p className="text-xs text-destructive">{errors.id}</p>
-            )}
           </div>
 
           <div className="flex flex-col gap-1.5">

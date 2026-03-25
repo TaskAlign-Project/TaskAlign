@@ -26,7 +26,7 @@ import {
 } from "@/lib/excel-import"
 import type { PlanMachine, Mold, Component } from "@/lib/types"
 
-import { machinesApi } from "@/lib/api"
+import { machinesApi, moldsApi, componentsApi} from "@/lib/api"
 import { toast } from "sonner"
 
 interface Props<T> {
@@ -113,14 +113,17 @@ export function ExcelImportDialog<T extends AnyImportData>({
       if (type === "machines") {
         await machinesApi.import(file)
       } else if (type === "molds") {
-        // await moldsApi.import(file) // Add this once moldsApi is ready
+        await moldsApi.import(file)
+      } else if (type === "components") {
+        await componentsApi.import(file)
       }
-      
-      toast.success(`Imported ${type} successfully`)
-      onImport([], mode) // Trigger refresh in parent
+
+      toast.success(`Imported ${TYPE_LABELS[type]} successfully`)
+      onImport([], mode)
       handleClose()
     } catch (error) {
-      toast.error(`Failed to import ${type}`)
+      console.error(error)
+      toast.error(`Failed to import ${TYPE_LABELS[type]}`)
     } finally {
       setIsProcessing(false)
     }

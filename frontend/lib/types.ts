@@ -14,11 +14,12 @@ export interface Machine {
 export type MachineStatus = "available" | "unavailable"
 
 export interface Mold {
-  id: string
-  name: string
-  group: "small" | "medium" | "large"
-  tonnage: number
-  component_id: string // Single component that uses this mold
+  id: string;      // This is now the UUID from the DB
+  code: string;    // This is "MLD1", "MLD2", etc.
+  name: string;
+  group: "small" | "medium" | "large";
+  tonnage: number;
+  component_id?: string;
 }
 
 export type DependencyMode = "wait" | "parallel"
