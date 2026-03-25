@@ -2,54 +2,22 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import {
-  Plus,
-  Eye,
-  Copy,
-  Trash2,
-  Check,
-  CheckCircle2,
-  FileText,
-  FlaskConical,
-} from "lucide-react"
+import { Plus, Eye, Copy, Trash2, Check, CheckCircle2, FileText, FlaskConical, Loader2 } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import {
-  getPlans,
-  createPlan,
-  createDemoPlan,
-  duplicatePlan,
-  deletePlan,
-  updatePlan,
-  setActivePlanId,
-  getActivePlanId,
-} from "@/lib/storage"
+import { plansApi } from "@/lib/api" // Import our API
 import type { Plan } from "@/lib/types"
 import { toast } from "sonner"
 
 export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([])
+  const [loading, setLoading] = useState(true)
   const [activePlanId, setActiveId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -57,47 +25,77 @@ export default function PlansPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState("")
 
+  // Load plans from DB on mount
   useEffect(() => {
-    setPlans(getPlans())
-    setActiveId(getActivePlanId())
+    loadPlans()
+    const savedActiveId = localStorage.getItem("activePlanId")
+    if (savedActiveId) setActiveId(savedActiveId)
   }, [])
 
-  function refresh() {
-    setPlans(getPlans())
-    setActiveId(getActivePlanId())
-  }
-
-  function handleCreate() {
-    const plan = createPlan({ name: newPlanName.trim() || undefined })
-    setActivePlanId(plan.id)
-    setNewPlanName("")
-    setCreateDialogOpen(false)
-    refresh()
-    toast.success(`Plan "${plan.name}" created and set as active`)
-  }
-
-  function handleSelect(planId: string) {
-    setActivePlanId(planId)
-    refresh()
-    const plan = plans.find((p) => p.id === planId)
-    toast.success(`"${plan?.name}" is now the active plan`)
-  }
-
-  function handleDuplicate(planId: string) {
-    const newPlan = duplicatePlan(planId)
-    if (newPlan) {
-      refresh()
-      toast.success(`Plan duplicated as "${newPlan.name}"`)
+  async function loadPlans() {
+    setLoading(true)
+    try {
+      const data = await plansApi.list()
+      setPlans(data)
+    } catch (error) {
+      toast.error("Failed to load plans from server")
+    } finally {
+      setLoading(false)
     }
   }
 
-  function handleDelete() {
+  async function handleCreate() {
+    try {
+      const plan = await plansApi.create({ name: newPlanName.trim() || undefined })
+      handleSelect(plan.id)
+      setNewPlanName("")
+      setCreateDialogOpen(false)
+      loadPlans()
+      toast.success(`Plan "${plan.name}" created`)
+    } catch (error) {
+      toast.error("Failed to create plan")
+    }
+  }
+
+  function handleSelect(planId: string) {
+    setActiveId(planId)
+    localStorage.setItem("activePlanId", planId)
+    const plan = plans.find((p) => p.id === planId)
+    toast.success(`"${plan?.name}" is now active`)
+  }
+
+  async function handleDelete() {
     if (!deleteTarget) return
-    const plan = plans.find((p) => p.id === deleteTarget)
-    deletePlan(deleteTarget)
-    setDeleteTarget(null)
-    refresh()
-    toast.success(`Plan "${plan?.name}" deleted`)
+    try {
+      await plansApi.delete(deleteTarget)
+      if (activePlanId === deleteTarget) {
+        setActiveId(null)
+        localStorage.removeItem("activePlanId")
+      }
+      setDeleteTarget(null)
+      loadPlans()
+      toast.success("Plan deleted")
+    } catch (error) {
+      toast.error("Failed to delete plan")
+    }
+  }
+
+  async function saveEditing() {
+    if (!editingId) return
+    const plan = plans.find((p) => p.id === editingId)
+    if (!plan) return
+    try {
+      await plansApi.update(editingId, {
+        name: editingName.trim(),
+        current_date: plan.current_date,
+        start_time: plan.start_time,
+      })
+      setEditingId(null)
+      loadPlans()
+      toast.success("Plan updated")
+    } catch (error) {
+      toast.error("Failed to update plan")
+    }
   }
 
   function startEditing(plan: Plan) {
@@ -105,24 +103,20 @@ export default function PlansPage() {
     setEditingName(plan.name)
   }
 
-  function saveEditing() {
-    if (!editingId) return
-    updatePlan(editingId, { name: editingName.trim() })
-    setEditingId(null)
-    setEditingName("")
-    refresh()
-    toast.success("Plan name updated")
-  }
-
   function cancelEditing() {
     setEditingId(null)
     setEditingName("")
   }
 
-  function handleLoadDemo() {
-    const plan = createDemoPlan()
-    refresh()
-    toast.success(`Demo plan "${plan.name}" created with sample data and run result`)
+  async function handleDuplicate(planId: string) {
+    try {
+      const plan = plans.find((p) => p.id === planId)
+      await plansApi.create({ name: `${plan?.name} (Copy)` })
+      loadPlans()
+      toast.success("Plan duplicated")
+    } catch {
+      toast.error("Failed to duplicate plan")
+    }
   }
 
   return (
@@ -138,10 +132,6 @@ export default function PlansPage() {
             {plans.length} plan{plans.length !== 1 && "s"}
           </p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleLoadDemo}>
-              <FlaskConical className="mr-2 h-4 w-4" />
-              Load Demo Data
-            </Button>
             <Button onClick={() => setCreateDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Create New Plan
@@ -174,10 +164,8 @@ export default function PlansPage() {
           <div className="grid gap-4">
             {plans.map((plan) => {
               const isActive = plan.id === activePlanId
-              const lastRun = plan.runs.length > 0 ? plan.runs[plan.runs.length - 1] : null
-              const unavailableMachines = plan.machines.filter(
-                (m) => m.status === "unavailable"
-              ).length
+              const lastRun = plan.last_run_at ?? null
+              const unavailableMachines = plan.unavailable_machines_count ?? 0
 
               return (
                 <Card
@@ -230,7 +218,7 @@ export default function PlansPage() {
                           </Badge>
                         )}
                         <Badge variant="secondary">
-                          {plan.runs.length} run{plan.runs.length !== 1 && "s"}
+                          {plan.run_count ?? 0} run{(plan.run_count ?? 0) !== 1 && "s"}
                         </Badge>
                       </div>
                     </div>
@@ -241,18 +229,16 @@ export default function PlansPage() {
                         Created:{" "}
                         {new Date(plan.created_at).toLocaleDateString()}
                       </span>
-                      <span>Machines: {plan.machines.length}</span>
+                      <span>Machines: {plan.machine_count ?? 0}</span>
                       {unavailableMachines > 0 && (
                         <span className="text-amber-600">
                           ({unavailableMachines} unavailable)
                         </span>
                       )}
-                      <span>Molds: {plan.molds.length}</span>
-                      <span>Components: {plan.components.length}</span>
+                      <span>Molds: {plan.mold_count ?? 0}</span>
+                      <span>Components: {plan.component_count ?? 0}</span>
                       {lastRun && (
-                        <span>
-                          Last run: {new Date(lastRun.created_at).toLocaleString()}
-                        </span>
+                        <span>Last run: {new Date(lastRun).toLocaleString()}</span>
                       )}
                     </div>
 

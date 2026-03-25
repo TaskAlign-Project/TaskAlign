@@ -1,29 +1,55 @@
-import type { ScheduleRequest, ScheduleResponse } from "./types"
+import type { ScheduleRequest, ScheduleResponse, Plan } from "./types"
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000"
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000"
+const API_V1 = `${BASE_URL}/api/v1`
 
-export async function runSchedule(
-  payload: ScheduleRequest
-): Promise<ScheduleResponse> {
+// --- Generic Fetch Wrapper ---
+async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_V1}${endpoint}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Server error: ${res.status}`)
+  }
+  return res.json()
+}
+
+// --- Plans API ---
+export const plansApi = {
+  list: () => apiFetch<Plan[]>("/plans"),
+  get: (id: string) => apiFetch<Plan>(`/plans/${id}`),
+  create: (data: Partial<Plan>) => 
+    apiFetch<Plan>("/plans", {
+      method: "POST",
+      body: JSON.stringify({
+        name: data.name || `Plan ${new Date().toLocaleDateString()}`,
+        current_date: new Date().toISOString().split('T')[0],
+        start_time: "08:00",
+        ...data
+      }),
+    }),
+  update: (id: string, data: Partial<Plan>) =>
+    apiFetch<Plan>(`/plans/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    apiFetch<{ message: string }>(`/plans/${id}`, { method: "DELETE" }),
+}
+
+// --- Existing GA Scheduler Call ---
+export async function runSchedule(payload: ScheduleRequest): Promise<ScheduleResponse> {
   const res = await fetch(`${BASE_URL}/schedule_v2`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })
-
-  if (!res.ok) {
-    let message = `Server error: ${res.status}`
-    try {
-      const body = await res.json()
-      if (body.detail) {
-        message = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)
-      }
-    } catch {
-      // ignore parse errors
-    }
-    throw new Error(message)
-  }
-
+  if (!res.ok) throw new Error("Scheduling failed")
   return res.json()
 }
