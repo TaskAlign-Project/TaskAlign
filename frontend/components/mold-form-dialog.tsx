@@ -30,7 +30,8 @@ interface Props {
 }
 
 const EMPTY: Mold = {
-  id: "",
+  id: "",       // UUID — empty for new, filled by backend
+  code: "",     // e.g. "MLD-001"
   name: "",
   group: "small",
   tonnage: 0,
@@ -56,9 +57,9 @@ export function MoldFormDialog({
 
   function validate(): boolean {
     const e: Record<string, string> = {}
-    if (!form.id.trim()) e.id = "ID is required"
-    else if (!isEdit && existingIds.includes(form.id.trim()))
-      e.id = "ID already exists"
+    if (!form.code.trim()) e.code = "Code is required"
+    else if (!isEdit && existingIds.includes(form.code.trim()))
+      e.code = "Code already exists"
     if (form.tonnage <= 0) e.tonnage = "Tonnage must be > 0"
     setErrors(e)
     return Object.keys(e).length === 0
@@ -67,7 +68,7 @@ export function MoldFormDialog({
   function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault()
     if (!validate()) return
-    onSave({ ...form, id: form.id.trim(), name: form.name.trim() })
+    onSave({ ...form, code: form.code.trim(), name: form.name.trim() })
     onOpenChange(false)
   }
 
@@ -80,14 +81,19 @@ export function MoldFormDialog({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="mold-code">Code (ID)</Label>
+            <Label htmlFor="mold-code">Code</Label>
             <Input
               id="mold-code"
               value={form.code}
+              disabled={isEdit}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
               placeholder="e.g. MLD-001"
             />
+            {errors.code && (
+              <p className="text-xs text-destructive">{errors.code}</p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -134,7 +140,6 @@ export function MoldFormDialog({
             )}
           </div>
 
-          {/* Component ID (single) */}
           <div className="flex flex-col gap-1.5">
             <Label>Component ID</Label>
             <p className="text-xs text-muted-foreground">
@@ -142,7 +147,9 @@ export function MoldFormDialog({
             </p>
             <Select
               value={form.component_id || "__none__"}
-              onValueChange={(v) => setForm({ ...form, component_id: v === "__none__" ? "" : v })}
+              onValueChange={(v) =>
+                setForm({ ...form, component_id: v === "__none__" ? "" : v })
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select component (optional)" />
