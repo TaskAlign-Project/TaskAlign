@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Plus, Eye, Copy, Trash2, Check, CheckCircle2, FileText, FlaskConical, Loader2 } from "lucide-react"
+import { Plus, Eye, Trash2, Check, CheckCircle2, FileText} from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -58,9 +58,9 @@ export default function PlansPage() {
   }
 
   function handleSelect(planId: string) {
-    setActivePlanId(planId)       // saves to localStorage
-    setActiveId(planId)           // ← updates React state so badge re-renders immediately
-    const plan = plans.find((p) => p.id === planId)
+    const plan = plans.find((p) => p.id === planId) ?? null
+    setActivePlanId(planId, plan)   // ← pass full plan object
+    setActiveId(planId)
     toast.success(`"${plan?.name}" is now active`)
   }
 
@@ -69,7 +69,7 @@ export default function PlansPage() {
     try {
       await plansApi.delete(deleteTarget)
       if (activePlanId === deleteTarget) {
-        setActivePlanId(null)                      
+        setActivePlanId(null, null)                     
         setActiveId(null)
       }
       setDeleteTarget(null)
@@ -106,17 +106,6 @@ export default function PlansPage() {
   function cancelEditing() {
     setEditingId(null)
     setEditingName("")
-  }
-
-  async function handleDuplicate(planId: string) {
-    try {
-      const plan = plans.find((p) => p.id === planId)
-      await plansApi.create({ name: `${plan?.name} (Copy)` })
-      loadPlans()
-      toast.success("Plan duplicated")
-    } catch {
-      toast.error("Failed to duplicate plan")
-    }
   }
 
   return (
@@ -258,14 +247,6 @@ export default function PlansPage() {
                           <Eye className="mr-1.5 h-3.5 w-3.5" />
                           View
                         </Link>
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDuplicate(plan.id)}
-                      >
-                        <Copy className="mr-1.5 h-3.5 w-3.5" />
-                        Duplicate
                       </Button>
                       <Button
                         size="sm"

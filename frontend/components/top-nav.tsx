@@ -38,10 +38,20 @@ export function TopNav() {
   const [hasActivePlan, setHasActivePlan] = useState(true)
 
   useEffect(() => {
-    const plan = getActivePlan()
-    setHasActivePlan(!!plan)
-    setActivePlanName(plan?.name ?? null)
-  }, [pathname]) // Re-check on navigation
+    function syncPlan() {
+      console.log("syncPlan called")
+      console.log("activePlanId:", localStorage.getItem("taskalign:activePlanId"))
+      console.log("getActivePlan():", getActivePlan())
+      const plan = getActivePlan()
+      setHasActivePlan(!!plan)
+      setActivePlanName(plan?.name ?? null)
+    }
+
+    syncPlan() // run on mount + pathname change
+
+    window.addEventListener("activePlanChanged", syncPlan)
+    return () => window.removeEventListener("activePlanChanged", syncPlan)
+  }, [pathname])
 
   // Pages that require an active plan
   const requiresPlan = ["/machines", "/molds", "/components", "/plan"].some(

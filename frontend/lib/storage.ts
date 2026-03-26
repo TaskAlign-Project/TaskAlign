@@ -18,6 +18,7 @@ const KEYS = {
   plans: "taskalign:plans",
   activePlanId: "taskalign:activePlanId",
   activeRunByPlan: "taskalign:activeRunByPlan",
+  activePlan: "taskalign:activePlan",
 }
 
 function getItem<T>(key: string, fallback: T): T {
@@ -245,17 +246,16 @@ export function getActivePlanId(): string | null {
   return getItem<string | null>(KEYS.activePlanId, null)
 }
 
-export function setActivePlanId(id: string | null): void {
+export function setActivePlanId(id: string | null, plan?: Plan | null): void {
   setItem(KEYS.activePlanId, id)
+  setItem(KEYS.activePlan, plan ?? null)   // ← cache the full plan object
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("activePlanChanged", { detail: { id } }))
   }
 }
 
 export function getActivePlan(): Plan | null {
-  const id = getActivePlanId()
-  if (!id) return null
-  return getPlanById(id) ?? null
+  return getItem<Plan | null>(KEYS.activePlan, null)
 }
 
 // ============================================================

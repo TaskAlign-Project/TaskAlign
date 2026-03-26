@@ -69,10 +69,9 @@ export default function PlanSummaryPage() {
     setCurrentRunIdState(getCurrentRunId(planId))
   }, [planId, loadAll])
 
-  function handleSetActive(planId: string) {
-    setActivePlanId(planId)       // ← saves to localStorage
-    setActiveId(planId)           // ← updates local state so isActive re-evaluates
-    const plan = plans.find((p) => p.id === planId)
+  function handleSetActive() {
+    setActivePlanId(planId, plan)   // planId from useParams, plan from useState
+    setActiveId(planId)
     toast.success(`"${plan?.name}" is now active`)
   }
 
