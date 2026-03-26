@@ -128,7 +128,7 @@ export default function MachinesPage() {
       const q = searchQuery.toLowerCase()
       result = result.filter(
         (m) =>
-          m.id.toLowerCase().includes(q) ||
+          (m.code ?? m.id).toLowerCase().includes(q) ||
           m.name.toLowerCase().includes(q)
       )
     }
@@ -180,6 +180,66 @@ export default function MachinesPage() {
           </div>
         </div>
 
+        {/* Filters */}
+        <div className="flex flex-wrap items-end gap-4 p-3 rounded-lg border bg-muted/30">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Search</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by ID or name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 w-48 h-8"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Group</Label>
+            <Select value={groupFilter} onValueChange={(v) => setGroupFilter(v as typeof groupFilter)}>
+              <SelectTrigger className="w-32 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Groups</SelectItem>
+                <SelectItem value="small">Small</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="large">Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Status</Label>
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+              <SelectTrigger className="w-32 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="available">Available</SelectItem>
+                <SelectItem value="unavailable">Unavailable</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {(searchQuery || groupFilter !== "all" || statusFilter !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery("")
+                setGroupFilter("all")
+                setStatusFilter("all")
+              }}
+              className="h-8"
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
+
         {/* Table */}
         <div className="rounded-lg border bg-card overflow-auto">
           <Table>
@@ -197,57 +257,82 @@ export default function MachinesPage() {
             </TableHeader>
 
             <TableBody>
-              {filteredMachines.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell className="font-mono text-sm">{m.code ?? m.id}</TableCell>
-                  <TableCell>{m.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{m.group}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">{m.tonnage}</TableCell>
-                  <TableCell className="text-right">{m.hours_per_day}</TableCell>
-                  <TableCell className="text-right">{m.efficiency}</TableCell>
-                  <TableCell>
-                    <Select
-                      value={m.status}
-                      onValueChange={(v) =>
-                        handleStatusChange(m.id, v as MachineStatus)
-                      }
-                    >
-                      <SelectTrigger className="w-[120px] h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="available">Available</SelectItem>
-                        <SelectItem value="unavailable">Unavailable</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setEditing(m)
-                          setDialogOpen(true)
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteTarget(m.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
+              {filteredMachines.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    className="text-center py-8 text-muted-foreground"
+                  >
+                    {machines.length === 0
+                      ? "No machines yet. Add one to get started."
+                      : "No machines match the current filters."}
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filteredMachines.map((m) => (
+                  <TableRow key={m.id}>
+                    <TableCell className="font-mono text-sm">{m.code ?? m.id}</TableCell>
+                    <TableCell className="font-medium">{m.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="capitalize">{m.group}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{m.tonnage}</TableCell>
+                    <TableCell className="text-right">{m.hours_per_day}</TableCell>
+                    <TableCell className="text-right">{m.efficiency}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={m.status}
+                        onValueChange={(v) =>
+                          handleStatusChange(m.id, v as MachineStatus)
+                        }
+                      >
+                        <SelectTrigger className="w-[120px] h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="available">
+                            <span className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                              Available
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="unavailable">
+                            <span className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full bg-red-500" />
+                              Unavailable
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setEditing(m)
+                            setDialogOpen(true)
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          <span className="sr-only">Edit {m.name}</span>
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteTarget(m.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                          <span className="sr-only">Delete {m.name}</span>
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>

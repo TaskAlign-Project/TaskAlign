@@ -57,13 +57,12 @@ export function MachineFormDialog({
 
   function validate(): boolean {
     const e: Record<string, string> = {}
+    // For create: user types "ID" but we store it as "code" in DB
     if (!form.id.trim()) e.id = "ID is required"
-    else if (!isEdit && existingIds.includes(form.id.trim()))
-      e.id = "ID already exists"
+    else if (!isEdit && existingIds.includes(form.id.trim())) e.id = "ID already exists"
     if (form.tonnage <= 0) e.tonnage = "Tonnage must be > 0"
     if (form.hours_per_day <= 0) e.hours_per_day = "Hours per day must be > 0"
-    if (form.efficiency <= 0 || form.efficiency > 1.5)
-      e.efficiency = "Efficiency must be in (0, 1.5]"
+    if (form.efficiency <= 0 || form.efficiency > 1.5) e.efficiency = "Efficiency must be in (0, 1.5]"
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -71,7 +70,18 @@ export function MachineFormDialog({
   function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault()
     if (!validate()) return
-    onSave({ ...form, id: form.id.trim(), name: form.name.trim() })
+
+    const inputId = form.id.trim()
+    const trimmedName = form.name.trim()
+
+    if (isEdit) {
+      // Edit keeps the real DB id
+      onSave({ ...form, id: inputId, name: trimmedName })
+    } else {
+      // Create: send user's typed ID as "code" and leave id empty so backend can generate it
+      onSave({ ...form, id: "", code: inputId, name: trimmedName })
+    }
+
     onOpenChange(false)
   }
 
@@ -86,12 +96,12 @@ export function MachineFormDialog({
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {/* ID */}
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="machine-id">ID</Label>
+          <Label htmlFor="machine-id">ID</Label>
             <Input
               id="machine-id"
               value={form.id}
               disabled={isEdit}
-              onChange={(e) => setForm({ ...form, id: e.target.value })}
+              onChange={(e) => setForm({ ...form, id: e.target.value, code: e.target.value })}
             />
             {errors.id && (
               <p className="text-xs text-destructive">{errors.id}</p>
