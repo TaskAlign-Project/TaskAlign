@@ -36,6 +36,7 @@ interface Props {
 
 const EMPTY: Component = {
   id: "",
+  component_id: "",
   name: "",
   quantity: 0,
   finished: 0,
@@ -68,6 +69,7 @@ export function ComponentFormDialog({
     if (component) {
       setForm({
         ...component,
+        component_id: component.component_id ?? "",
         start_date: component.start_date ?? new Date().toISOString().split("T")[0],
         due_date: component.due_date ?? new Date().toISOString().split("T")[0],
         dependency_mode: component.dependency_mode ?? "wait",
@@ -81,7 +83,7 @@ export function ComponentFormDialog({
   }, [component, open])
 
   // Available prerequisites: all components except self
-  const availablePrereqs = allComponents.filter((c) => c.id !== form.id)
+  const availablePrereqs = allComponents.filter((c) => c.component_id !== form.component_id)
 
   function togglePrereq(id: string) {
     setForm((prev) => ({
@@ -94,9 +96,9 @@ export function ComponentFormDialog({
 
   function validate(): boolean {
     const e: Record<string, string> = {}
-    if (!form.id.trim()) e.id = "ID is required"
-    else if (!isEdit && existingIds.includes(form.id.trim()))
-      e.id = "ID already exists"
+    if (!form.component_id?.trim()) e.component_id = "ID is required"
+    else if (!isEdit && existingIds.includes(form.component_id.trim()))
+      e.component_id = "ID already exists"
     if (form.quantity <= 0) e.quantity = "Quantity must be > 0"
     if ((form.finished ?? 0) < 0) e.finished = "Finished must be >= 0"
     if (form.cycle_time_sec <= 0)
@@ -117,7 +119,7 @@ export function ComponentFormDialog({
   function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault()
     if (!validate()) return
-    onSave({ ...form, id: form.id.trim(), name: form.name.trim() })
+    onSave({ ...form, component_id: form.component_id!.trim(), name: form.name.trim() })
     onOpenChange(false)
   }
 
@@ -138,12 +140,12 @@ export function ComponentFormDialog({
               <Label htmlFor="comp-id">ID</Label>
               <Input
                 id="comp-id"
-                value={form.id}
+                value={form.component_id ?? ""}
                 disabled={isEdit}
-                onChange={(e) => setForm({ ...form, id: e.target.value })}
+                onChange={(e) => setForm({ ...form, component_id: e.target.value })}
               />
-              {errors.id && (
-                <p className="text-xs text-destructive">{errors.id}</p>
+              {errors.component_id && (
+                <p className="text-xs text-destructive">{errors.component_id}</p>
               )}
             </div>
 
@@ -233,8 +235,8 @@ export function ComponentFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {molds.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.id} - {m.name}
+                    <SelectItem key={m.id} value={m.code}>
+                      {m.code} - {m.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -330,15 +332,12 @@ export function ComponentFormDialog({
               <ScrollArea className="h-32 rounded-md border p-2">
                 <div className="flex flex-col gap-2">
                   {availablePrereqs.map((c) => (
-                    <label
-                      key={c.id}
-                      className="flex items-center gap-2 text-sm cursor-pointer"
-                    >
+                    <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
                       <Checkbox
-                        checked={form.prerequisites.includes(c.id)}
-                        onCheckedChange={() => togglePrereq(c.id)}
+                        checked={form.prerequisites.includes(c.id)}   // ← keep c.id (UUID) for DB relation
+                        onCheckedChange={() => togglePrereq(c.id)}     // ← keep c.id (UUID) for DB relation
                       />
-                      <span className="font-mono text-xs">{c.id}</span>
+                      <span className="font-mono text-xs">{c.component_id ?? c.id}</span>  {/* ← show component_id */}
                       <span className="text-muted-foreground">{c.name}</span>
                     </label>
                   ))}

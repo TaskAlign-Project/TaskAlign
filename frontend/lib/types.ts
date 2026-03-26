@@ -22,11 +22,11 @@ export interface Mold {
   component_id?: string;
 }
 
-export type DependencyMode = "wait" | "parallel"
+export type DependencyMode = "wait_all" | "parallel"
 
 export interface Component {
   id: string
-  component_id?: string // the code like "C1-ORD001"
+  component_id: string // the code like "C1-ORD001"
   name: string
   quantity: number
   finished: number
@@ -40,7 +40,8 @@ export interface Component {
   dependency_mode: DependencyMode
   transfer_time_minutes: number
   dependency_transfer_time_minutes?: number
-  order_code: string // Single order code - each order code is a separate component entry
+  order_code?: string                         
+  plan_id?: string
 }
 
 export interface PlanSetup {
@@ -122,12 +123,14 @@ export interface PlanRun {
 export interface Plan {
   id: string
   name: string
-  month_label?: string
+  current_date: string          
+  start_time: string
+  month_days: number
+  mold_change_time_minutes: number
+  color_change_time_minutes: number
+  pop_size: number
+  n_generations: number
+  mutation_rate: number
   created_at: string
   updated_at: string
-  setup: PlanSetup
-  machines: PlanMachine[]
-  molds: Mold[]
-  components: Component[]
-  runs: PlanRun[]
 }

@@ -293,9 +293,13 @@ export default function ComponentsPage() {
                             <span className="text-xs text-muted-foreground">None</span>
                           ) : (
                             <>
-                              {c.prerequisites.slice(0, 2).map((p) => (
-                                <Badge key={p} variant="outline" className="text-xs font-mono">{p}</Badge>
-                              ))}
+                              {c.prerequisites.slice(0, 2).map((p) => {
+                                const match = components.find((comp) => comp.id === p)
+                                const label = match?.component_id ?? p
+                                return (
+                                  <Badge key={p} variant="outline" className="text-xs font-mono">{label}</Badge>
+                                )
+                              })}
                               {c.prerequisites.length > 2 && (
                                 <Badge variant="secondary" className="text-xs">+{c.prerequisites.length - 2} more</Badge>
                               )}
