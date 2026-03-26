@@ -38,6 +38,7 @@ import { ComponentFormDialog } from "@/components/component-form-dialog"
 import { componentsApi, moldsApi, plansApi } from "@/lib/api"
 import type { Component, Mold, Plan } from "@/lib/types"
 import { toast } from "sonner"
+import { getActivePlanId } from "@/lib/storage"
 
 export default function ComponentsPage() {
   const [plan, setPlan] = useState<Plan | null>(null)
@@ -54,31 +55,46 @@ export default function ComponentsPage() {
   const [startDateFilter, setStartDateFilter] = useState("")
   const [dueDateFilter, setDueDateFilter] = useState("")
 
-  const planId = typeof window !== "undefined"
-    ? localStorage.getItem("activePlanId")
-    : null
+  const [planId, setPlanId] = useState<string | null>(null)
 
-  async function loadData() {
-    if (!planId) { setLoading(false); return }
+  async function loadData(id?: string) {
+    const activePlanId = id ?? planId
+    if (!activePlanId) { setLoading(false); return }
     try {
       setLoading(true)
       const [planData, componentsData, moldsData] = await Promise.all([
-        plansApi.get(planId),
-        componentsApi.list(planId),
+        plansApi.get(activePlanId),
+        componentsApi.list(activePlanId),
         moldsApi.list(),
       ])
       setPlan(planData)
       setComponents(componentsData)
       setMolds(moldsData)
     } catch (err) {
-      console.error(err)
       toast.error("Failed to load components")
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => {
+    const id = getActivePlanId()
+    setPlanId(id)
+  }, [])
+
+  useEffect(() => {
+    if (planId !== null) loadData(planId)
+  }, [planId])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const newId = (e as CustomEvent<{ id: string | null }>).detail.id
+      setPlanId(newId)
+      if (newId) loadData(newId)
+    }
+    window.addEventListener("activePlanChanged", handler)
+    return () => window.removeEventListener("activePlanChanged", handler)
+  }, [])
 
   // Create / Update
   async function handleSave(c: Component) {

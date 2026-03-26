@@ -1,4 +1,4 @@
-import type { ScheduleRequest, ScheduleResponse, Plan, Machine, Mold, Component } from "./types"
+import type { ScheduleRequest, ScheduleResponse, Plan, PlanRun, Machine, Mold, Component } from "./types"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000"
 const API_V1 = `${BASE_URL}/api/v1`
@@ -150,4 +150,10 @@ export const componentsApi = {
     }
     return res.json()
   }
+}
+
+// --- Runs API (Plan-based) ---
+export const runsApi = {
+  list: (planId: string) => apiFetch<PlanRun[]>(`/plans/${planId}/runs`),
+  get: (planId: string, runId: string) => apiFetch<PlanRun>(`/plans/${planId}/runs/${runId}`),
 }

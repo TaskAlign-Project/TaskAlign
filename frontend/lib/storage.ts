@@ -247,6 +247,9 @@ export function getActivePlanId(): string | null {
 
 export function setActivePlanId(id: string | null): void {
   setItem(KEYS.activePlanId, id)
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("activePlanChanged", { detail: { id } }))
+  }
 }
 
 export function getActivePlan(): Plan | null {

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { plansApi } from "@/lib/api" // Import our API
 import type { Plan } from "@/lib/types"
 import { toast } from "sonner"
+import { getActivePlanId, setActivePlanId } from "@/lib/storage"
 
 export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([])
@@ -28,8 +29,7 @@ export default function PlansPage() {
   // Load plans from DB on mount
   useEffect(() => {
     loadPlans()
-    const savedActiveId = localStorage.getItem("activePlanId")
-    if (savedActiveId) setActiveId(savedActiveId)
+    setActiveId(getActivePlanId())
   }, [])
 
   async function loadPlans() {
@@ -58,8 +58,8 @@ export default function PlansPage() {
   }
 
   function handleSelect(planId: string) {
-    setActiveId(planId)
-    localStorage.setItem("activePlanId", planId)
+    setActivePlanId(planId)       // saves to localStorage
+    setActiveId(planId)           // ← updates React state so badge re-renders immediately
     const plan = plans.find((p) => p.id === planId)
     toast.success(`"${plan?.name}" is now active`)
   }
@@ -69,8 +69,8 @@ export default function PlansPage() {
     try {
       await plansApi.delete(deleteTarget)
       if (activePlanId === deleteTarget) {
+        setActivePlanId(null)                      
         setActiveId(null)
-        localStorage.removeItem("activePlanId")
       }
       setDeleteTarget(null)
       loadPlans()
