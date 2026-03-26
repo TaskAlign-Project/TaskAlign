@@ -74,6 +74,8 @@ class Component(Base):
     color = Column(String)
     start_date = Column(String, nullable=True)  # ISO date
     due_date = Column(String, nullable=True)    # ISO date
+    lead_time_days = Column(Integer, default=2)
+    status = Column(String, default="pending")
 
     # Dependencies
     dependency_mode = Column(String, default="wait_all")

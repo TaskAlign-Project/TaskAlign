@@ -26,6 +26,7 @@ export type DependencyMode = "wait" | "parallel"
 
 export interface Component {
   id: string
+  component_id?: string // the code like "C1-ORD001"
   name: string
   quantity: number
   finished: number
@@ -38,6 +39,7 @@ export interface Component {
   prerequisites: string[]
   dependency_mode: DependencyMode
   transfer_time_minutes: number
+  dependency_transfer_time_minutes?: number
   order_code: string // Single order code - each order code is a separate component entry
 }
 

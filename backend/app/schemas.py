@@ -67,6 +67,7 @@ class ComponentBase(BaseModel):
     color: str
     start_date: Optional[str] = None
     due_date: Optional[str] = None
+    lead_time_days: int = 2
     dependency_mode: str = "wait_all"
     dependency_transfer_time_minutes: int = 0
     prerequisites: List[str] = []

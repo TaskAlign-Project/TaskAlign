@@ -186,6 +186,7 @@ def import_components(
             color=str(data.get("color", "")).strip(),
             start_date=str(data.get("start_date")).strip() if data.get("start_date") else None,
             due_date=str(data.get("due_date", "")).strip(),
+            lead_time_days=int(data.get("lead_time_days") or 2),
             dependency_mode=dependency_mode,
             dependency_transfer_time_minutes=transfer_time,
             prerequisites=prerequisites,

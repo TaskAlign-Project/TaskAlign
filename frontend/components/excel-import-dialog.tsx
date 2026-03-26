@@ -33,6 +33,7 @@ interface Props<T> {
   open: boolean
   onOpenChange: (open: boolean) => void
   type: ImportType
+  planId?: string
   onImport: (data: T[], mode: "replace" | "append") => void
 }
 
@@ -54,8 +55,11 @@ export function ExcelImportDialog<T extends AnyImportData>({
   open,
   onOpenChange,
   type,
+  planId,
   onImport,
 }: Props<T>) {
+  const resolvedPlanId = planId ?? (typeof window !== "undefined" ? localStorage.getItem("activePlanId") : null)
+
   const [file, setFile] = useState<File | null>(null)
   const [result, setResult] = useState<ImportResult<T> | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -98,13 +102,7 @@ export function ExcelImportDialog<T extends AnyImportData>({
     }
   }
 
-  // function handleImport(mode: "replace" | "append") {
-  //   if (result && result.data.length > 0) {
-  //     onImport(result.data, mode)
-  //     handleClose()
-  //   }
-  // }
-
+  
   // Inside ExcelImportDialog
   async function handleImport(mode: "replace" | "append") {
     if (!file) return
@@ -115,7 +113,8 @@ export function ExcelImportDialog<T extends AnyImportData>({
       } else if (type === "molds") {
         await moldsApi.import(file, mode)           // ← pass mode
       } else if (type === "components") {
-        await componentsApi.import(file, mode)      // ← pass mode
+        if (!resolvedPlanId) throw new Error("No active plan selected")
+        await componentsApi.import(resolvedPlanId, file, mode)   // ← pass planId  // ← pass planId
       }
 
       toast.success(`Imported ${TYPE_LABELS[type]} successfully`)
