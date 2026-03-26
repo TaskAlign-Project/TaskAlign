@@ -51,21 +51,11 @@ export default function MoldsPage() {
   const [groupFilter, setGroupFilter] = useState<"all" | "small" | "medium" | "large">("all")
 
   //  Load molds and components from backend
-  async function loadMolds() {
+async function loadMolds() {
   try {
     setLoading(true)
-    // Try to get both, but don't crash if components fail (yet)
     const moldsData = await moldsApi.list()
-    let componentsData: Component[] = []
-    
-    try {
-      componentsData = await componentsApi.list()
-    } catch (e) {
-      console.warn("Components API not ready yet")
-    }
-
     setMolds(moldsData)
-    setComponents(componentsData)
   } catch (err) {
     console.error(err)
     toast.error("Failed to load molds from backend")
@@ -109,27 +99,10 @@ export default function MoldsPage() {
   }
 
   //  Import
-  async function handleImport(data: Mold[], mode: "replace" | "append") {
-    try {
-      if (mode === "replace") {
-        // Delete all existing molds first
-        await Promise.all(molds.map((m) => moldsApi.delete(m.id)))
-      }
-
-      // Create each imported mold
-      await Promise.all(data.map((m) => moldsApi.create(m)))
-
-      const skipped = mode === "append"
-        ? data.length - data.length // adjust if backend returns duplicates
-        : 0
-
-      toast.success(`Imported ${data.length} molds`)
-      loadMolds()
-    } catch (err) {
-      console.error(err)
-      toast.error("Import failed — check console for details")
-    }
-  }
+async function handleImport(_data: Mold[], _mode: "replace" | "append") {
+  // Backend already handled everything
+  await loadMolds()
+}
 
   const filteredMolds = useMemo(() => {
     let result = molds

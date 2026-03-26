@@ -79,7 +79,10 @@ export const machinesApi = {
       method: "POST",
       body: formData,
     });
-    if (!res.ok) throw new Error("Import failed");
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))  // ← read error detail
+      throw new Error(body.detail || `Import failed: ${res.status}`)
+    }
     return res.json();
   }
 }
@@ -109,17 +112,20 @@ export const moldsApi = {
       method: "POST",
       body: formData,
     });
-    if (!res.ok) throw new Error("Import failed");
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))  // ← read error detail
+      throw new Error(body.detail || `Import failed: ${res.status}`)
+    }
     return res.json();
   }
 }
 
 // --- Components API (Plan-based) ---
 export const componentsApi = {
-  list: () => apiFetch<Component[]>("/components"),
+  list: (planId: string) => apiFetch<Component[]>(`/plans/${planId}/components`),
   get: (id: string) => apiFetch<Component>(`/components/${id}`),
-  create: (data: Partial<Component>) =>
-    apiFetch<Component>("/components", {
+  create: (planId: string, data: Partial<Component>) =>
+    apiFetch<Component>(`/plans/${planId}/components`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -131,15 +137,17 @@ export const componentsApi = {
   delete: (id: string) =>
     apiFetch<{ message: string }>(`/components/${id}`, { method: "DELETE" }),
 
-  // Real File Upload for Import
-  import: async (file: File, mode: "replace" | "append" = "append") => {
+  import: async (planId: string, file: File, mode: "replace" | "append" = "append") => {
     const formData = new FormData()
     formData.append("file", file)
-    const res = await fetch(`${BASE_URL}/api/v1/components/import?mode=${mode}`, {
+    const res = await fetch(`${BASE_URL}/api/v1/plans/${planId}/components/import?mode=${mode}`, {
       method: "POST",
       body: formData,
     })
-    if (!res.ok) throw new Error("Import failed")
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.detail || `Import failed: ${res.status}`)
+    }
     return res.json()
   }
 }

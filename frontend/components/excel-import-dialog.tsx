@@ -121,10 +121,10 @@ export function ExcelImportDialog<T extends AnyImportData>({
       toast.success(`Imported ${TYPE_LABELS[type]} successfully`)
       onImport([], mode)
       handleClose()
-    } catch (error) {
-      console.error(error)
-      toast.error(`Failed to import ${TYPE_LABELS[type]}`)
-    } finally {
+      } catch (error) {
+        console.error(error)
+        toast.error(error instanceof Error ? error.message : `Failed to import ${TYPE_LABELS[type]}`)
+      } finally {
       setIsProcessing(false)
     }
   }
