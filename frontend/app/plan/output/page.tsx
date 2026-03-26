@@ -7,7 +7,6 @@ import {
   Download,
   ClipboardCopy,
   FileQuestion,
-  FlaskConical,
   Search,
   ChevronDown,
   ChevronRight,
@@ -45,21 +44,18 @@ import {
 } from "@/components/ui/collapsible"
 import { toast } from "sonner"
 import { GanttChart } from "@/components/schedule/GanttChart"
-import type { ScheduleResponse, Assignment, Plan, PlanRun } from "@/lib/types"
+import type {Assignment, Plan, PlanRun, Machine } from "@/lib/types"
 import {
   getActivePlan,
-  getCurrentRun,
   setCurrentRun,
-  addDemoRunToActivePlan,
-  getPlanById,
+  getCurrentRunId,
 } from "@/lib/storage"
+import { plansApi, runsApi, machinesApi } from "@/lib/api"
 import {
   groupByMachineThenDay,
   computeDailySummaries,
   downloadCSV,
   assignmentsToCSV,
-  DEMO_RESULT,
-  storeResult,
 } from "@/lib/schedule-utils"
 import { formatDayAsDate } from "@/lib/gantt"
 
@@ -101,45 +97,52 @@ function fmt(n: number | undefined | null, decimals = 2): string {
 
 export default function OutputPage() {
   const [plan, setPlan] = useState<Plan | null>(null)
+  const [runs, setRuns] = useState<PlanRun[]>([])
+  const [machines, setMachines] = useState<Machine[]>([])
   const [currentRun, setCurrentRunState] = useState<PlanRun | null>(null)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const activePlan = getActivePlan()
-    setPlan(activePlan)
-    if (activePlan) {
-      const run = getCurrentRun(activePlan.id)
-      setCurrentRunState(run)
-      setSelectedRunId(run?.id ?? null)
+    async function load() {
+      const activePlan = getActivePlan()
+      if (!activePlan) { setLoaded(true); return }
+
+      try {
+        const [fetchedPlan, fetchedRuns, fetchedMachines] = await Promise.all([
+          plansApi.get(activePlan.id),
+          runsApi.list(activePlan.id),
+          machinesApi.list(),
+        ])
+        console.log("fetchedRuns:", JSON.stringify(fetchedRuns, null, 2))
+        setPlan(fetchedPlan)
+        setRuns(fetchedRuns)
+        setMachines(fetchedMachines)
+
+        const savedRunId = getCurrentRunId(activePlan.id)
+        const run = savedRunId
+          ? fetchedRuns.find((r) => r.id === savedRunId) ?? fetchedRuns.at(-1)
+          : fetchedRuns.at(-1)
+        setCurrentRunState(run ?? null)
+        setSelectedRunId(run?.id ?? null)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load plan data")
+      } finally {
+        setLoaded(true)
+      }
     }
-    setLoaded(true)
+    load()
   }, [])
 
   function handleRunChange(runId: string) {
     if (!plan) return
-    const run = plan.runs.find((r) => r.id === runId)
+    const run = runs.find((r) => r.id === runId)
     if (run) {
       setCurrentRun(plan.id, runId)
       setCurrentRunState(run)
       setSelectedRunId(runId)
       toast.success("Switched to selected run")
-    }
-  }
-
-  function loadDemo() {
-    const run = addDemoRunToActivePlan()
-    if (run && plan) {
-      // Refresh plan data
-      const updatedPlan = getPlanById(plan.id)
-      if (updatedPlan) {
-        setPlan(updatedPlan)
-        setCurrentRunState(run)
-        setSelectedRunId(run.id)
-      }
-      toast.success("Demo run added to current plan")
-    } else {
-      toast.error("Could not add demo run - no active plan")
     }
   }
 
@@ -184,12 +187,19 @@ export default function OutputPage() {
                   Run Scheduler
                 </Link>
               </Button>
-              <Button variant="outline" onClick={loadDemo}>
-                <FlaskConical className="mr-2 h-4 w-4" />
-                Load Demo Result
-              </Button>
             </div>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+if (error) {
+    return (
+      <div className="flex flex-col h-full">
+        <AppHeader title="Schedule Output" description="Timeline-ready plan output" />
+        <div className="flex-1 flex items-center justify-center p-8">
+          <p className="text-sm text-destructive">{error}</p>
         </div>
       </div>
     )
@@ -198,10 +208,11 @@ export default function OutputPage() {
   return (
     <OutputContent
       plan={plan}
+      runs={runs}
+      machines={machines}
       currentRun={currentRun}
       selectedRunId={selectedRunId}
       onRunChange={handleRunChange}
-      onLoadDemo={loadDemo}
     />
   )
 }
@@ -209,19 +220,25 @@ export default function OutputPage() {
 // ---- Main content with filters and tabs ----
 function OutputContent({
   plan,
+  runs,
+  machines,
   currentRun,
   selectedRunId,
   onRunChange,
-  onLoadDemo,
 }: {
   plan: Plan
+  runs: PlanRun[]
+  machines: Machine[]
   currentRun: PlanRun
   selectedRunId: string | null
   onRunChange: (runId: string) => void
-  onLoadDemo: () => void
 }) {
-  const data = currentRun.result
-  const startDate = currentRun.request_snapshot?.current_date ?? plan.setup.current_date ?? "2026-01-01"
+  const data = {
+    assignments: currentRun.assignments ?? [],
+    unmet: currentRun.unmet ?? {},
+    score: currentRun.score ?? 0,
+  }
+  const startDate = currentRun.request_snapshot?.current_date ?? plan.setup?.current_date ?? "2026-01-01"
   const [filterDayStart, setFilterDayStart] = useState("all")
   const [filterDayEnd, setFilterDayEnd] = useState("all")
   const [filterMachine, setFilterMachine] = useState("all")
@@ -236,7 +253,7 @@ function OutputContent({
     () => [...new Set(data.assignments.map((a) => a.day).filter((d) => d != null && d > 0))].sort((a, b) => a - b),
     [data.assignments]
   )
-  const machines = useMemo(
+  const assignmentMachines = useMemo(
     () =>
       [
         ...new Map(
@@ -251,15 +268,13 @@ function OutputContent({
   // Machine groups from the plan's machines
   const machineGroupMap = useMemo(() => {
     const map = new Map<string, string>()
-    for (const m of plan.machines) {
-      map.set(m.id, m.group)
-    }
+    for (const m of machines) { map.set(m.id, m.group) }
     return map
-  }, [plan.machines])
+  }, [machines])
 
   const machineGroups = useMemo(
-    () => [...new Set(plan.machines.map((m) => m.group).filter((g) => g && g.trim() !== ""))].sort(),
-    [plan.machines]
+    () => [...new Set(machines.map((m) => m.group).filter(Boolean))].sort(),
+    [machines]
   )
 
   const toggleType = useCallback((type: string) => {
@@ -326,8 +341,8 @@ function OutputContent({
     })
   }
 
-  const runIndex = plan.runs.findIndex((r) => r.id === selectedRunId)
-  const runNumber = runIndex >= 0 ? runIndex + 1 : plan.runs.length
+  const runIndex = runs.findIndex((r) => r.id === selectedRunId)
+  const runNumber = runIndex >= 0 ? runIndex + 1 : runs.length
 
   return (
     <div className="flex flex-col h-full">
@@ -348,11 +363,11 @@ function OutputContent({
                 <SelectValue placeholder="Select run" />
               </SelectTrigger>
               <SelectContent>
-                {plan.runs
+                {runs
                   .filter((run) => run.id && run.id.trim() !== "")
                   .map((run, idx) => (
                     <SelectItem key={run.id} value={run.id}>
-                      Run #{idx + 1} - {new Date(run.created_at).toLocaleDateString()}
+                      Run #{idx + 1} - {run.run_at ? new Date(run.run_at).toLocaleDateString() : "No date"}
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -362,7 +377,7 @@ function OutputContent({
             {currentRun.mode === "fresh" ? "Fresh" : "Resume"}
           </Badge>
           <span className="text-xs text-muted-foreground">
-            {new Date(currentRun.created_at).toLocaleString()}
+            {currentRun.run_at ? new Date(currentRun.run_at).toLocaleString() : ""}
           </span>
         </div>
 
@@ -397,10 +412,6 @@ function OutputContent({
             <ClipboardCopy className="mr-2 h-3.5 w-3.5" />
             Copy CSV
           </Button>
-          <Button variant="ghost" size="sm" onClick={onLoadDemo}>
-            <FlaskConical className="mr-2 h-3.5 w-3.5" />
-            Load Demo
-          </Button>
         </div>
 
         {/* Warning if empty */}
@@ -423,7 +434,7 @@ function OutputContent({
           />
           <SummaryCard
             label="Machines"
-            value={String(machines.length)}
+            value={String(assignmentMachines.length)}
           />
           <SummaryCard
             label="Days Scheduled"
@@ -501,7 +512,7 @@ function OutputContent({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All machines</SelectItem>
-                {machines.map(([id, name]) => (
+                {assignmentMachines.map(([id, name]) => (
                   <SelectItem key={id} value={id}>
                     {id} - {name}
                   </SelectItem>
