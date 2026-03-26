@@ -273,8 +273,13 @@ function OutputContent({
   }, [machines])
 
   const machineGroups = useMemo(
-    () => [...new Set(machines.map((m) => m.group).filter(Boolean))].sort(),
-    [machines]
+    () => {
+      // Prefer machines list, fall back to assignment data
+      const fromMachines = machines.map((m) => m.group).filter(Boolean)
+      if (fromMachines.length > 0) return [...new Set(fromMachines)].sort()
+      return [...new Set(data.assignments.map((a) => a.machine_group).filter(Boolean))].sort()
+    },
+    [machines, data.assignments]
   )
 
   const toggleType = useCallback((type: string) => {
@@ -301,7 +306,7 @@ function OutputContent({
     if (filterMachine !== "all") arr = arr.filter((a) => a.machine_id === filterMachine)
     // Machine group filter
     if (filterMachineGroup !== "all") {
-      arr = arr.filter((a) => machineGroupMap.get(a.machine_id) === filterMachineGroup)
+      arr = arr.filter((a) => a.machine_group === filterMachineGroup)
     }
     // Task type filter
     arr = arr.filter((a) => activeTypes.has(a.task_type))
