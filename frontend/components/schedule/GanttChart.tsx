@@ -57,7 +57,9 @@ const GANTT_COLORS: Record<
 }
 
 const ROW_HEIGHT = 44
-const HEADER_HEIGHT = 28
+const DAY_HEADER_HEIGHT = 28
+const HOUR_RULER_HEIGHT = 20
+const HEADER_HEIGHT = DAY_HEADER_HEIGHT + HOUR_RULER_HEIGHT
 const LABEL_WIDTH = 180
 
 interface GanttChartProps {
@@ -103,7 +105,7 @@ export function GanttChart({
     [filteredAssignments]
   )
   const dayColumns = useMemo(() => generateDayColumns(range), [range])
-  const hourTicks = useMemo(() => generateHourTicks(range, 4), [range])
+  const hourTicks = useMemo(() => generateHourTicks(range, 2), [range])
 
   const timelineWidth = range.totalHours * pxPerHour
   const totalHeight = HEADER_HEIGHT + machineRows.length * ROW_HEIGHT
@@ -217,7 +219,7 @@ export function GanttChart({
                 style={{ height: HEADER_HEIGHT }}
               >
                 {/* Day labels */}
-                <div className="flex border-b bg-muted/50" style={{ height: 28 }}>
+                <div className="relative border-b bg-muted/50" style={{ height: DAY_HEADER_HEIGHT }}>
                   {dayColumns.map((col) => {
                     const left =
                       ((col.startHour - range.rangeStart) /
@@ -228,12 +230,47 @@ export function GanttChart({
                       <div
                         key={col.day}
                         className="absolute top-0 flex items-center justify-center border-r text-[11px] font-semibold text-card-foreground"
-                        style={{ left, width, height: 28 }}
+                        style={{ left, width, height: DAY_HEADER_HEIGHT }}
                       >
                         {formatDayAsDate(col.day, startDate)}
                       </div>
                     )
                   })}
+                </div>
+                {/* Hour ruler (every 2 hours) */}
+                <div className="relative border-b bg-muted/20" style={{ height: HOUR_RULER_HEIGHT }}>
+                  {hourTicks
+                    .filter((h) => {
+                      // Only show every-2h ticks: relative hour within day must be even
+                      const relH = (h - range.rangeStart) % 24
+                      return relH % 2 === 0
+                    })
+                    .map((absH) => {
+                      const left =
+                        ((absH - range.rangeStart) / range.totalHours) *
+                        timelineWidth
+                      // Hour within the day (0–23)
+                      const hourOfDay = absH % 24
+                      // Skip midnight (12AM) — it's already shown as a day boundary
+                      if (hourOfDay === 0) return null
+                      const label =
+                        hourOfDay < 12
+                          ? `${hourOfDay}AM`
+                          : hourOfDay === 12
+                          ? "12PM"
+                          : `${hourOfDay - 12}PM`
+                      return (
+                        <div
+                          key={`hour-tick-${absH}`}
+                          className="absolute top-0 flex flex-col items-center"
+                          style={{ left, transform: "translateX(-50%)" }}
+                        >
+                          <span className="text-[9px] text-muted-foreground leading-5 select-none">
+                            {label}
+                          </span>
+                        </div>
+                      )
+                    })}
                 </div>
               </div>
 
