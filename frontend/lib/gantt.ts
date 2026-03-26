@@ -32,14 +32,12 @@ export function formatDayAsDate(day: number, startDate: string): string {
 // ---- AM/PM time formatting ----
 // Converts a decimal hour (0-24) to AM/PM format string
 export function formatHourAMPM(hour: number): string {
-  const h = Math.floor(hour) % 24
-  const m = Math.round((hour - Math.floor(hour)) * 60)
+  const totalMinutes = Math.round(hour * 60)
+  const h = Math.floor(totalMinutes / 60) % 24
+  const m = totalMinutes % 60
   const period = h >= 12 ? "PM" : "AM"
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-  if (m === 0) {
-    return `${h12}:00 ${period}`
-  }
-  return `${h12}:${m.toString().padStart(2, "0")} ${period}`
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`
 }
 
 // Formats hour for tick display (shorter version)
