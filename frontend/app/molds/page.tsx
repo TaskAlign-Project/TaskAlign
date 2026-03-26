@@ -111,7 +111,8 @@ async function handleImport(_data: Mold[], _mode: "replace" | "append") {
       const q = searchQuery.toLowerCase()
       result = result.filter(
         (m) =>
-          m.id.toLowerCase().includes(q) ||
+          // Search by code (e.g. MLD1) or name (e.g. Mold 1)
+          m.code.toLowerCase().includes(q) ||
           m.name.toLowerCase().includes(q)
       )
     }
