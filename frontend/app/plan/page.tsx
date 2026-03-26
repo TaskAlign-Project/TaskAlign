@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Play, Loader2, ExternalLink, Sparkles, RotateCcw } from "lucide-react"
@@ -14,135 +14,149 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ScheduleResults } from "@/components/schedule-results"
 import {
-  getActivePlan,
-  updateActivePlanSetup,
-  appendPlanRun,
-  createPlan,
-  setActivePlanId,
   getActivePlanId,
+  setActivePlanId,
+  setCurrentRun,
+  getCurrentRunId,
 } from "@/lib/storage"
-import { runSchedule } from "@/lib/api"
-import type { Plan, PlanSetup, PlanRun, ScheduleResponse } from "@/lib/types"
+import { plansApi, machinesApi, moldsApi, componentsApi, runsApi } from "@/lib/api"
+import type { Plan, PlanRun, Machine, Mold, Component, ScheduleResponse } from "@/lib/types"
 import { toast } from "sonner"
 
 type RunMode = "fresh" | "resume"
 
+// Local form state mirrors the flat Plan fields we care about
+interface SetupForm {
+  current_date: string
+  start_time: string
+  month_days: number
+  mold_change_time_minutes: number
+  color_change_time_minutes: number
+  pop_size: number
+  n_generations: number
+  mutation_rate: number
+}
+
+function planToForm(plan: Plan): SetupForm {
+  return {
+    current_date: plan.current_date ?? new Date().toISOString().split("T")[0],
+    start_time: plan.start_time ?? "08:00",
+    month_days: plan.month_days ?? 22,
+    mold_change_time_minutes: plan.mold_change_time_minutes ?? 90,
+    color_change_time_minutes: plan.color_change_time_minutes ?? 30,
+    pop_size: plan.pop_size ?? 50,
+    n_generations: plan.n_generations ?? 100,
+    mutation_rate: plan.mutation_rate ?? 0.1,
+  }
+}
+
 export default function PlanPage() {
   const router = useRouter()
+
   const [plan, setPlan] = useState<Plan | null>(null)
-  const [form, setForm] = useState<PlanSetup | null>(null)
+  const [form, setForm] = useState<SetupForm | null>(null)
+  const [machines, setMachines] = useState<Machine[]>([])
+  const [molds, setMolds] = useState<Mold[]>([])
+  const [components, setComponents] = useState<Component[]>([])
+  const [runs, setRuns] = useState<PlanRun[]>([])
+
   const [loading, setLoading] = useState(false)
+  const [pageLoading, setPageLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ScheduleResponse | null>(null)
   const [mode, setMode] = useState<RunMode>("fresh")
-  const [loaded, setLoaded] = useState(false)
 
-  useEffect(() => {
-    const activePlan = getActivePlan()
-    setPlan(activePlan)
-    setForm(activePlan?.setup ?? null)
-    // Default mode based on whether plan has runs
-    if (activePlan && activePlan.runs.length > 0) {
-      setMode("resume")
-    } else {
-      setMode("fresh")
+  const planId = getActivePlanId()
+
+  const loadAll = useCallback(async (id: string) => {
+    setPageLoading(true)
+    try {
+      const [p, m, mo, co, r] = await Promise.all([
+        plansApi.get(id),
+        machinesApi.list(),
+        moldsApi.list(),
+        componentsApi.list(id),
+        runsApi.list(id),
+      ])
+      setPlan(p)
+      setForm(planToForm(p))
+      setMachines(m)
+      setMolds(mo)
+      setComponents(co)
+      setRuns(r)
+      setMode(r.length > 0 ? "resume" : "fresh")
+    } catch {
+      toast.error("Failed to load plan data")
+    } finally {
+      setPageLoading(false)
     }
-    setLoaded(true)
   }, [])
 
-  function refresh() {
-    const activePlan = getActivePlan()
-    setPlan(activePlan)
-    setForm(activePlan?.setup ?? null)
-  }
+  useEffect(() => {
+    if (planId) {
+      loadAll(planId)
+    } else {
+      setPageLoading(false)
+    }
+  }, [planId, loadAll])
 
-  function updateField(field: keyof PlanSetup, value: number) {
+  async function updateField(field: keyof SetupForm, value: number | string) {
     if (!form || !plan) return
     const next = { ...form, [field]: value }
     setForm(next)
-    updateActivePlanSetup(next)
-  }
-
-  function updateFieldString(field: keyof PlanSetup, value: string) {
-    if (!form || !plan) return
-    const next = { ...form, [field]: value }
-    setForm(next)
-    updateActivePlanSetup(next)
+    try {
+      await plansApi.update(plan.id, { [field]: value })
+    } catch {
+      toast.error("Failed to save setting")
+    }
   }
 
   async function handleRun() {
+    if (!plan || !form) return
     setLoading(true)
     setError(null)
     setResult(null)
 
-    let targetPlan = plan
-    let targetPlanId = getActivePlanId()
+    let targetPlanId = plan.id
 
-    // Fresh Start mode: create a new plan
-    if (mode === "fresh" && plan && plan.runs.length > 0) {
-      const newPlan = createPlan({ name: `${plan.name} (Fresh)` })
-      setActivePlanId(newPlan.id)
-      targetPlan = newPlan
-      targetPlanId = newPlan.id
-      refresh()
-      toast.success(`Created new plan "${newPlan.name}"`)
-    }
-
-    if (!targetPlan || !targetPlanId) {
-      setError("No active plan selected.")
-      setLoading(false)
-      return
-    }
-
-    const machines = targetPlan.machines.filter((m) => m.status === "available")
-    const molds = targetPlan.molds
-    const components = targetPlan.components
-    const setup = targetPlan.setup
-
-    if (machines.length === 0 || molds.length === 0 || components.length === 0) {
-      setError(
-        "Please add at least one available machine, mold, and component before running the scheduler."
-      )
-      setLoading(false)
-      return
+    // Fresh Start: create a new plan copy first
+    if (mode === "fresh" && runs.length > 0) {
+      try {
+        const newPlan = await plansApi.create({
+          name: `${plan.name} (Fresh)`,
+          current_date: form.current_date,
+          start_time: form.start_time,
+          month_days: form.month_days,
+          mold_change_time_minutes: form.mold_change_time_minutes,
+          color_change_time_minutes: form.color_change_time_minutes,
+          pop_size: form.pop_size,
+          n_generations: form.n_generations,
+          mutation_rate: form.mutation_rate,
+        })
+        setActivePlanId(newPlan.id)
+        targetPlanId = newPlan.id
+        toast.success(`Created new plan "${newPlan.name}"`)
+      } catch {
+        toast.error("Failed to create fresh plan")
+        setLoading(false)
+        return
+      }
     }
 
     try {
-      const res = await runSchedule({
-        month_days: setup.month_days,
-        mold_change_time_minutes: setup.mold_change_time_minutes,
-        color_change_time_minutes: setup.color_change_time_minutes,
-        machines,
-        molds,
-        components,
-        pop_size: setup.pop_size,
-        n_generations: setup.n_generations,
-        mutation_rate: setup.mutation_rate,
-      })
+      // Single call — backend runs GA and saves the run
+      const savedRun = await runsApi.run(targetPlanId)
 
-      // Create run record
-      const run: PlanRun = {
-        id: crypto.randomUUID(),
-        created_at: new Date().toISOString(),
-        mode: mode === "fresh" && plan && plan.runs.length > 0 ? "fresh" : plan?.runs.length === 0 ? "fresh" : "resume",
-        request_snapshot: {
-          month_days: setup.month_days,
-          current_date: setup.current_date,
-          mold_change_time_minutes: setup.mold_change_time_minutes,
-          color_change_time_minutes: setup.color_change_time_minutes,
-          pop_size: setup.pop_size,
-          n_generations: setup.n_generations,
-          mutation_rate: setup.mutation_rate,
-          machines: targetPlan.machines,
-          molds: targetPlan.molds,
-          components: targetPlan.components,
-        },
-        result: res,
+      // Extract result shape for ScheduleResults component
+      const scheduleResult: ScheduleResponse = {
+        assignments: savedRun.assignments ?? [],
+        unmet: savedRun.unmet ?? {},
+        score: savedRun.score ?? 0,
       }
 
-      appendPlanRun(targetPlanId, run)
-      setResult(res)
-      refresh()
+      setCurrentRun(targetPlanId, savedRun.id)
+      setResult(scheduleResult)
+      await loadAll(targetPlanId)
       toast.success("Schedule generated successfully")
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error"
@@ -153,39 +167,32 @@ export default function PlanPage() {
     }
   }
 
-  if (!loaded) return null
+  if (pageLoading) return null
 
-  if (!plan || !form) {
+  if (!planId || !plan || !form) {
     return (
       <div className="flex flex-col h-full">
-        <AppHeader
-          title="Setup Plan"
-          description="Configure parameters and run the scheduler"
-        />
+        <AppHeader title="Setup Plan" description="Configure parameters and run the scheduler" />
         <NoPlanState description="Select or create a plan to configure and run the scheduler." />
       </div>
     )
   }
 
-  const availableMachines = plan.machines.filter((m) => m.status === "available").length
-  const hasRuns = plan.runs.length > 0
-  const lastRun = hasRuns ? plan.runs[plan.runs.length - 1] : null
+  const availableMachines = machines.filter((m) => m.status === "available").length
+  const hasRuns = runs.length > 0
+  const lastRun = hasRuns ? runs[runs.length - 1] : null
 
   return (
     <div className="flex flex-col h-full">
-      <AppHeader
-        title="Setup Plan"
-        description={`Configuring "${plan.name}"`}
-      />
+      <AppHeader title="Setup Plan" description={`Configuring "${plan.name}"`} />
       <div className="flex-1 p-4 md:p-6 flex flex-col gap-6 overflow-y-auto">
+
         {/* Plan info */}
         <div className="flex flex-wrap items-center gap-3">
-          <Badge variant="secondary" className="text-sm">
-            {plan.name}
-          </Badge>
+          <Badge variant="secondary" className="text-sm">{plan.name}</Badge>
           {hasRuns && (
             <Badge variant="outline" className="text-xs">
-              {plan.runs.length} previous run{plan.runs.length !== 1 && "s"}
+              {runs.length} previous run{runs.length !== 1 && "s"}
             </Badge>
           )}
           <Button variant="link" size="sm" asChild className="h-auto p-0">
@@ -198,61 +205,36 @@ export default function PlanPage() {
           <span className="text-muted-foreground">
             Machines:{" "}
             <span className="font-medium text-card-foreground">
-              {availableMachines}/{plan.machines.length}
+              {availableMachines}/{machines.length}
             </span>
-            {plan.machines.length > availableMachines && (
+            {machines.length > availableMachines && (
               <span className="text-amber-600 ml-1">
-                ({plan.machines.length - availableMachines} unavailable)
+                ({machines.length - availableMachines} unavailable)
               </span>
             )}
           </span>
           <span className="text-muted-foreground">
-            Molds:{" "}
-            <span className="font-medium text-card-foreground">{plan.molds.length}</span>
+            Molds: <span className="font-medium text-card-foreground">{molds.length}</span>
           </span>
           <span className="text-muted-foreground">
-            Components:{" "}
-            <span className="font-medium text-card-foreground">{plan.components.length}</span>
+            Components: <span className="font-medium text-card-foreground">{components.length}</span>
           </span>
         </div>
 
-        {/* Mode selection (only show if plan has runs) */}
+        {/* Mode selection */}
         {hasRuns && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
             <Card
               className={`cursor-pointer transition-all ${
-                mode === "resume"
-                  ? "border-primary ring-1 ring-primary"
-                  : "hover:border-muted-foreground/50"
+                mode === "resume" ? "border-primary ring-1 ring-primary" : "hover:border-muted-foreground/50"
               }`}
               onClick={() => setMode("resume")}
             >
               <CardHeader className="p-4 pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <RotateCcw className="h-4 w-4" />
-                  Resume
+                  <RotateCcw className="h-4 w-4" />Resume
                 </CardTitle>
-                <CardDescription className="text-xs">
-                  Re-run with current inputs on this plan
-                </CardDescription>
-              </CardHeader>
-            </Card>
-            <Card
-              className={`cursor-pointer transition-all ${
-                mode === "fresh"
-                  ? "border-primary ring-1 ring-primary"
-                  : "hover:border-muted-foreground/50"
-              }`}
-              onClick={() => setMode("fresh")}
-            >
-              <CardHeader className="p-4 pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  Fresh Start
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Create a new plan copy and run
-                </CardDescription>
+                <CardDescription className="text-xs">Re-run with current inputs on this plan</CardDescription>
               </CardHeader>
             </Card>
           </div>
@@ -271,13 +253,9 @@ export default function PlanPage() {
                   id="current-date"
                   type="date"
                   value={form.current_date || ""}
-                  onChange={(e) =>
-                    updateFieldString("current_date", e.target.value)
-                  }
+                  onChange={(e) => updateField("current_date", e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  The start date of the schedule
-                </p>
+                <p className="text-xs text-muted-foreground">Start date of the schedule</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="start-time">Start Time</Label>
@@ -285,13 +263,9 @@ export default function PlanPage() {
                   id="start-time"
                   type="time"
                   value={form.start_time || "08:00"}
-                  onChange={(e) =>
-                    updateFieldString("start_time", e.target.value)
-                  }
+                  onChange={(e) => updateField("start_time", e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Time when factory begins work
-                </p>
+                <p className="text-xs text-muted-foreground">Time factory begins work</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="month-days">Month Days</Label>
@@ -299,9 +273,7 @@ export default function PlanPage() {
                   id="month-days"
                   type="number"
                   value={form.month_days || ""}
-                  onChange={(e) =>
-                    updateField("month_days", parseInt(e.target.value) || 0)
-                  }
+                  onChange={(e) => updateField("month_days", parseInt(e.target.value) || 0)}
                 />
               </div>
             </div>
@@ -312,12 +284,7 @@ export default function PlanPage() {
                 type="number"
                 step="1"
                 value={form.mold_change_time_minutes ?? ""}
-                onChange={(e) =>
-                  updateField(
-                    "mold_change_time_minutes",
-                    parseInt(e.target.value) || 0
-                  )
-                }
+                onChange={(e) => updateField("mold_change_time_minutes", parseInt(e.target.value) || 0)}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -327,12 +294,7 @@ export default function PlanPage() {
                 type="number"
                 step="1"
                 value={form.color_change_time_minutes ?? ""}
-                onChange={(e) =>
-                  updateField(
-                    "color_change_time_minutes",
-                    parseInt(e.target.value) || 0
-                  )
-                }
+                onChange={(e) => updateField("color_change_time_minutes", parseInt(e.target.value) || 0)}
               />
             </div>
           </CardContent>
@@ -349,32 +311,25 @@ export default function PlanPage() {
             {loading
               ? "Running Scheduler..."
               : hasRuns
-              ? mode === "fresh"
-                ? "Run Fresh"
-                : "Re-run"
+              ? mode === "fresh" ? "Run Fresh" : "Re-run"
               : "Run Scheduler"}
           </Button>
           {(result || lastRun) && (
             <Button variant="outline" size="lg" asChild>
               <Link href="/plan/output">
-                <ExternalLink className="mr-2 h-4 w-4" />
-                View Output
+                <ExternalLink className="mr-2 h-4 w-4" />View Output
               </Link>
             </Button>
           )}
           {loading && (
-            <p className="text-sm text-muted-foreground">
-              This may take a moment...
-            </p>
+            <p className="text-sm text-muted-foreground">This may take a moment...</p>
           )}
         </div>
 
         {/* Error */}
         {error && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-            <p className="text-sm font-medium text-destructive">
-              Scheduler Error
-            </p>
+            <p className="text-sm font-medium text-destructive">Scheduler Error</p>
             <p className="text-sm text-destructive/90 mt-1">{error}</p>
           </div>
         )}

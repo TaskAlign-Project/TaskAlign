@@ -24,23 +24,15 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
 export const plansApi = {
   list: () => apiFetch<Plan[]>("/plans"),
   get: (id: string) => apiFetch<Plan>(`/plans/${id}`),
-  create: (data: Partial<Plan>) => 
-    apiFetch<Plan>("/plans", {
-      method: "POST",
-      body: JSON.stringify({
-        name: data.name || `Plan ${new Date().toLocaleDateString()}`,
-        current_date: new Date().toISOString().split('T')[0],
-        start_time: "08:00",
-        ...data
-      }),
-    }),
-  update: (id: string, data: Partial<Plan>) =>
+  create: (data: Partial<Plan>) =>
+    apiFetch<Plan>("/plans", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Plan>) =>       // ← Partial, not full Plan
     apiFetch<Plan>(`/plans/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
   delete: (id: string) =>
-    apiFetch<{ message: string }>(`/plans/${id}`, { method: "DELETE" }),
+    apiFetch<void>(`/plans/${id}`, { method: "DELETE" }),
 }
 
 // --- Existing GA Scheduler Call ---
@@ -155,5 +147,7 @@ export const componentsApi = {
 // --- Runs API (Plan-based) ---
 export const runsApi = {
   list: (planId: string) => apiFetch<PlanRun[]>(`/plans/${planId}/runs`),
-  get: (planId: string, runId: string) => apiFetch<PlanRun>(`/plans/${planId}/runs/${runId}`),
+  get: (runId: string) => apiFetch<PlanRun>(`/runs/${runId}`),
+  // Triggers GA on backend, returns the saved Run
+  run: (planId: string) => apiFetch<PlanRun>(`/plans/${planId}/run`, { method: "POST" }),
 }

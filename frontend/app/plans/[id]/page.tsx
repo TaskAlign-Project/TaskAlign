@@ -122,9 +122,9 @@ export default function PlanSummaryPage() {
 
   const isActive = plan.id === activePlanId
   const unavailableMachines = machines.filter((m) => m.status === "unavailable").length
-  const latestRun = runs.length > 0 ? runs[runs.length - 1] : null
+  const latestRun = runs.length > 0 ? runs[0] : null
   const totalUnmet = latestRun
-    ? Object.values(latestRun.result.unmet).reduce((s, v) => s + v, 0)
+    ? Object.values(latestRun.unmet ?? {}).reduce((s, v) => s + (v as number), 0)
     : 0
 
   const finishedComponents = components.filter(
@@ -220,7 +220,7 @@ export default function PlanSummaryPage() {
           <SummaryCard label="Runs" value={String(runs.length)} />
           {latestRun && (
             <>
-              <SummaryCard label="Last Score" value={latestRun.result.score.toFixed(2)} />
+              <SummaryCard label="Last Score" value={(latestRun.score ?? 0).toFixed(2)} />
               <SummaryCard label="Unmet Qty" value={totalUnmet.toLocaleString()} alert={totalUnmet > 0} />
             </>
           )}
@@ -339,7 +339,7 @@ export default function PlanSummaryPage() {
                     <TableRow>
                       <TableHead className="w-16">Run #</TableHead>
                       <TableHead>Timestamp</TableHead>
-                      <TableHead>Mode</TableHead>
+                      <TableHead>Name</TableHead>
                       <TableHead className="text-right">Score</TableHead>
                       <TableHead className="text-right">Unmet Qty</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -349,7 +349,7 @@ export default function PlanSummaryPage() {
                     {[...runs].reverse().map((run, idx) => {
                       const runNumber = runs.length - idx
                       const isCurrent = run.id === currentRunId
-                      const unmetQty = Object.values(run.result.unmet).reduce((s, v) => s + v, 0)
+                      const unmetQty = Object.values(run.unmet ?? {}).reduce((s, v) => s + (v as number), 0)
 
                       return (
                         <TableRow key={run.id} className={isCurrent ? "bg-primary/5" : ""}>
@@ -357,13 +357,13 @@ export default function PlanSummaryPage() {
                             #{runNumber}
                             {isCurrent && <Badge variant="secondary" className="ml-2 text-[10px]">Current</Badge>}
                           </TableCell>
-                          <TableCell className="text-sm">{new Date(run.created_at).toLocaleString()}</TableCell>
+                          <TableCell className="text-sm">{new Date(run.run_at).toLocaleString()}</TableCell>
                           <TableCell>
-                            <Badge variant={run.mode === "fresh" ? "default" : "secondary"} className="capitalize">
-                              {run.mode}
+                            <Badge variant="secondary" className="capitalize">
+                              {run.run_name ?? `Run ${runNumber}`}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right font-mono">{run.result.score.toFixed(2)}</TableCell>
+                          <TableCell className="text-right font-mono">{(run.score ?? 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right font-mono">{unmetQty.toLocaleString()}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">

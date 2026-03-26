@@ -102,22 +102,17 @@ export type PlanMachine = Machine & { status: MachineStatus }
 
 export interface PlanRun {
   id: string
-  created_at: string
-  mode: "fresh" | "resume"
-  note?: string
-  request_snapshot?: {
-    month_days: number
-    current_date?: string
-    mold_change_time_minutes: number
-    color_change_time_minutes: number
-    pop_size: number
-    n_generations: number
-    mutation_rate: number
-    machines: PlanMachine[]
-    molds: Mold[]
-    components: Component[]
-  }
-  result: ScheduleResponse
+  plan_id: string
+  run_name?: string
+  run_at: string        // backend uses run_at, not created_at
+  status: "completed" | "failed"
+  score?: number
+  unmet?: Record<string, number>
+  assignments?: Assignment[]
+  // Keep these for localStorage compat if needed
+  mode?: "fresh" | "resume"
+  created_at?: string
+  result?: ScheduleResponse  // legacy localStorage shape
 }
 
 export interface Plan {

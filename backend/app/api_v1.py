@@ -11,6 +11,13 @@ from fastapi import UploadFile, File, Query
 import openpyxl
 import io
 
+# Helper 
+def parse_date(val):
+    if not val:
+        return None
+    # Strip time portion if present: '2026-03-05 00:00:00' → '2026-03-05'
+    return date.fromisoformat(str(val).split(" ")[0].split("T")[0])
+
 # --- IMPORT MACHINES FROM EXCEL ---
 @router.post("/machines/import")
 def import_machines(
@@ -228,11 +235,11 @@ def delete_plan(plan_id: str, db: Session = Depends(get_db)):
     return {"message": "Plan deleted"}
 
 @router.patch("/plans/{plan_id}", response_model=schemas.Plan)
-def update_plan(plan_id: str, plan: schemas.PlanCreate, db: Session = Depends(get_db)):
+def update_plan(plan_id: str, plan: schemas.PlanUpdate, db: Session = Depends(get_db)):
     db_plan = db.query(db_models.Plan).filter(db_models.Plan.id == plan_id).first()
     if not db_plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    for key, value in plan.model_dump().items():
+    for key, value in plan.model_dump(exclude_unset=True).items():
         setattr(db_plan, key, value)
     db_plan.updated_at = datetime.utcnow()
     db.commit()
@@ -397,8 +404,8 @@ def run_plan(plan_id: str, db: Session = Depends(get_db)):
             cycle_time_sec=c.cycle_time_sec,
             mold_id=c.mold_id,
             color=c.color,
-            start_date=date.fromisoformat(c.start_date) if c.start_date else None,
-            due_date=date.fromisoformat(c.due_date) if c.due_date else date.fromisoformat(db_plan.current_date),
+            start_date=parse_date(c.start_date),                                          # ← fixed
+            due_date=parse_date(c.due_date) or date.fromisoformat(db_plan.current_date),  # ← fixed
             dependency_mode=c.dependency_mode,
             dependency_transfer_time_minutes=c.dependency_transfer_time_minutes,
             prerequisites=c.prerequisites,
@@ -409,7 +416,7 @@ def run_plan(plan_id: str, db: Session = Depends(get_db)):
     # 5. Run GA Scheduler
     try:
         # Convert plan strings to date/time objects
-        current_date = date.fromisoformat(db_plan.current_date)
+        current_date = parse_date(db_plan.current_date)
         start_time = time.fromisoformat(db_plan.start_time)
 
         result = ga_optimize_v2(

@@ -96,3 +96,14 @@ class Run(RunBase):
     plan_id: str
     run_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+class PlanUpdate(BaseModel):
+    name: Optional[str] = None
+    current_date: Optional[str] = None
+    start_time: Optional[str] = None
+    month_days: Optional[int] = None
+    mold_change_time_minutes: Optional[float] = None
+    color_change_time_minutes: Optional[float] = None
+    pop_size: Optional[int] = None
+    n_generations: Optional[int] = None
+    mutation_rate: Optional[float] = None

@@ -46,8 +46,22 @@ export default function PlansPage() {
 
   async function handleCreate() {
     try {
-      const plan = await plansApi.create({ name: newPlanName.trim() || undefined })
-      handleSelect(plan.id)
+      const plan = await plansApi.create({
+        name: newPlanName.trim() || `Plan ${new Date().toLocaleDateString("en-GB")}`,
+        current_date: new Date().toISOString().split("T")[0],
+        start_time: "08:00:00",
+        month_days: 22,
+        mold_change_time_minutes: 90,
+        color_change_time_minutes: 30,
+        pop_size: 25,
+        n_generations: 60,
+        mutation_rate: 0.3,
+      })
+
+      // Pass plan directly — don't rely on plans[] state which isn't updated yet
+      setActivePlanId(plan.id, plan)
+      setActiveId(plan.id)
+
       setNewPlanName("")
       setCreateDialogOpen(false)
       loadPlans()
