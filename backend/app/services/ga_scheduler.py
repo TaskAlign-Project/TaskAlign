@@ -321,11 +321,13 @@ def _decode_v2(
 
     for day in range(1, month_days + 1):
         usable: Dict[str, float] = {}
+        max_clock_hours = 23.59 - shift_start_hour  # can't go past midnight
         for m in machines:
             if getattr(m, "status", "available") != "available":
                 usable[m.id] = 0.0
             else:
-                usable[m.id] = float(m.hours_per_day) * float(m.efficiency)
+                raw = float(m.hours_per_day) * float(m.efficiency)
+                usable[m.id] = min(raw, max_clock_hours)
 
         t: Dict[str, float] = {m.id: 0.0 for m in machines}
         seq: Dict[str, int] = {m.id: 1 for m in machines}
@@ -374,7 +376,7 @@ def _decode_v2(
                     setup += max(0.0, mold_change_h)
 
                 start_after_setup = now + setup
-                per_piece_h = _piece_hours(comp.cycle_time_sec)
+                per_piece_h = _piece_hours(comp.cycle_time_sec) / float(machine.efficiency)
                 if per_piece_h <= 0:
                     continue
 
@@ -438,25 +440,15 @@ def _decode_v2(
                     t_next = min(wait_candidates_next_times)
                     if t_next > now + EPS:
                         wait_h = t_next - now
-                        start_dt = _hour_to_datetime(current_date, shift_start_time, day, now)
-                        end_dt = _hour_to_datetime(current_date, shift_start_time, day, t_next)
                         tasks.append({
                             "day": day,
-                            "date": str(_day_index_to_date(current_date, day)),
                             "machine_id": mid,
                             "machine_name": machine.name,
-                            "machine_group": machine.group,
                             "sequence_in_day": seq[mid],
                             "task_type": "WAIT",
                             "used_hours": wait_h,
                             "start_hour": now,
                             "end_hour": t_next,
-                            "start_hour_clock": shift_start_hour + float(now),
-                            "end_hour_clock": shift_start_hour + float(t_next),
-                            "start_time": _fmt_time(start_dt),
-                            "end_time": _fmt_time(end_dt),
-                            "start_datetime": start_dt.isoformat(),
-                            "end_datetime": end_dt.isoformat(),
                             "utilization": min(1.0, wait_h / cap) if cap > EPS else 0.0,
                         })
                         t[mid] = t_next
@@ -744,7 +736,7 @@ def _decode_v2(
                 seq[mid] += 1
 
             # PRODUCE
-            per_piece_h = _piece_hours(chosen.cycle_time_sec)
+            per_piece_h = _piece_hours(chosen.cycle_time_sec) / float(machine.efficiency)
             if per_piece_h <= 0:
                 done[mid] = True
                 t[mid] = cap
@@ -769,8 +761,27 @@ def _decode_v2(
                 t[mid] = cap
                 continue
 
+            # Prevent tiny tail batches: if we can fit very few pieces AND
+            # there's still more remaining after this, defer to next day.
+            MIN_BATCH_HOURS = 0.1  # at least 6 minutes of production
+            is_last_batch = (qty >= remaining[chosen.id])
+            if not is_last_batch and qty * per_piece_h < MIN_BATCH_HOURS:
+                done[mid] = True
+                t[mid] = cap
+                continue
+
             used_h = qty * per_piece_h
             end_prod = start_prod + used_h
+
+            # Guard: floating point can push end_prod just past cap
+            if end_prod > cap + EPS:
+                qty = max(0, int((cap - start_prod) // per_piece_h))
+                if qty <= 0:
+                    done[mid] = True
+                    t[mid] = cap
+                    continue
+                used_h = qty * per_piece_h
+                end_prod = start_prod + used_h
 
             if not _interval_is_free(intervals, start_prod, end_prod):
                 nxt = _next_mold_free_time_for_window(intervals, start_prod, per_piece_h, cap)
