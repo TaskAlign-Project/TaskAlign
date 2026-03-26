@@ -71,16 +71,14 @@ export const machinesApi = {
   delete: (id: string) =>
     apiFetch<{ message: string }>(`/machines/${id}`, { method: "DELETE" }),
   
-  // New: Real File Upload for Import
-  import: async (file: File) => {
+  // Real File Upload for Import
+  import: async (file: File, mode: "replace" | "append" = "append") => {
     const formData = new FormData();
     formData.append("file", file);
-    
-    const res = await fetch(`${BASE_URL}/api/v1/machines/import`, {
+    const res = await fetch(`${BASE_URL}/api/v1/machines/import?mode=${mode}`, {
       method: "POST",
-      body: formData, // Browser sets boundary automatically
+      body: formData,
     });
-
     if (!res.ok) throw new Error("Import failed");
     return res.json();
   }
@@ -102,10 +100,12 @@ export const moldsApi = {
     }),
   delete: (id: string) =>
     apiFetch<{ message: string }>(`/molds/${id}`, { method: "DELETE" }),
-  import: async (file: File) => {
+
+  // Real File Upload for Import
+  import: async (file: File, mode: "replace" | "append" = "append") => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${BASE_URL}/api/v1/molds/import`, {
+    const res = await fetch(`${BASE_URL}/api/v1/molds/import?mode=${mode}`, {
       method: "POST",
       body: formData,
     });
@@ -130,10 +130,12 @@ export const componentsApi = {
     }),
   delete: (id: string) =>
     apiFetch<{ message: string }>(`/components/${id}`, { method: "DELETE" }),
-  import: async (file: File) => {
+
+  // Real File Upload for Import
+  import: async (file: File, mode: "replace" | "append" = "append") => {
     const formData = new FormData()
     formData.append("file", file)
-    const res = await fetch(`${BASE_URL}/api/v1/components/import`, {
+    const res = await fetch(`${BASE_URL}/api/v1/components/import?mode=${mode}`, {
       method: "POST",
       body: formData,
     })

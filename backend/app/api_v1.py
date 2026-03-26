@@ -7,44 +7,43 @@ from app import schemas
 
 router = APIRouter()
 
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Query
 import openpyxl
 import io
 
 # --- IMPORT MACHINES FROM EXCEL ---
 @router.post("/machines/import")
-def import_machines(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def import_machines(
+    file: UploadFile = File(...),
+    mode: str = Query("append"),
+    db: Session = Depends(get_db),
+):
     contents = file.file.read()
     wb = openpyxl.load_workbook(io.BytesIO(contents))
     ws = wb.active
 
     headers = [cell.value for cell in ws[1]]
-    print(f"Headers found: {headers}")
-    print(f"Total rows: {ws.max_row}")
+
+    if mode == "replace":
+        db.query(db_models.Machine).delete()
+        db.commit()
 
     created = []
     skipped = []
 
     for row in ws.iter_rows(min_row=2, values_only=True):
-        print(f"Raw row: {row}")
         data = dict(zip(headers, row))
-        print(f"Row data: {data}")
-        print(f"id value: {data.get('id')}, code value: {data.get('code')}")
 
         code = data.get("id") or data.get("code")
-        print(f"Resolved code: {code}")
 
         if not code:
-            print("SKIPPING: no code found")
             continue
 
         existing = db.query(db_models.Machine).filter(db_models.Machine.code == str(code)).first()
         if existing:
-            print(f"SKIPPING: {code} already exists")
             skipped.append(code)
             continue
 
-        print(f"CREATING: {code}")
         db_machine = db_models.Machine(
             code=str(code),
             name=str(data.get("name") or code),
@@ -63,12 +62,21 @@ def import_machines(file: UploadFile = File(...), db: Session = Depends(get_db))
 
 # --- IMPORT MOLDS FROM EXCEL ---
 @router.post("/molds/import")
-def import_molds(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def import_molds(
+    file: UploadFile = File(...),
+    mode: str = Query("append"),
+    db: Session = Depends(get_db),
+):
     contents = file.file.read()
     wb = openpyxl.load_workbook(io.BytesIO(contents))
     ws = wb.active
 
     headers = [str(cell.value).strip() if cell.value else None for cell in ws[1]]
+
+    if mode == "replace":
+        db.query(db_models.Mold).delete()
+        db.commit()
+
     created = []
     skipped = []
 
@@ -103,7 +111,12 @@ def import_molds(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
 # --- IMPORT COMPONENTS FROM EXCEL ---
 @router.post("/plans/{plan_id}/components/import")
-def import_components(plan_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+def import_components(
+    plan_id: str,
+    file: UploadFile = File(...),
+    mode: str = Query("append"),
+    db: Session = Depends(get_db),
+):
     db_plan = db.query(db_models.Plan).filter(db_models.Plan.id == plan_id).first()
     if not db_plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -113,6 +126,11 @@ def import_components(plan_id: str, file: UploadFile = File(...), db: Session = 
     ws = wb.active
 
     headers = [str(cell.value).strip() if cell.value else None for cell in ws[1]]
+
+    if mode == "replace":
+        db.query(db_models.Component).filter(db_models.Component.plan_id == plan_id).delete()
+        db.commit()
+
     created = []
     skipped = []
 

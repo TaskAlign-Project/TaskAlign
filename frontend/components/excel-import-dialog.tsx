@@ -111,11 +111,11 @@ export function ExcelImportDialog<T extends AnyImportData>({
     setIsProcessing(true)
     try {
       if (type === "machines") {
-        await machinesApi.import(file)
+        await machinesApi.import(file, mode)        // ← pass mode
       } else if (type === "molds") {
-        await moldsApi.import(file)
+        await moldsApi.import(file, mode)           // ← pass mode
       } else if (type === "components") {
-        await componentsApi.import(file)
+        await componentsApi.import(file, mode)      // ← pass mode
       }
 
       toast.success(`Imported ${TYPE_LABELS[type]} successfully`)
