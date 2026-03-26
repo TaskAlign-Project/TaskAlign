@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Cog, Box, Puzzle, CalendarClock, Database } from "lucide-react"
+import { Cog, Box, Puzzle, CalendarClock } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { getMachines, getMolds, getComponents, loadExampleData } from "@/lib/storage"
-import { toast } from "sonner"
+import { getMachines, getMolds, getComponents } from "@/lib/storage"
 
 export default function DashboardPage() {
   const [counts, setCounts] = useState({ machines: 0, molds: 0, components: 0 })
@@ -19,16 +18,6 @@ export default function DashboardPage() {
       components: getComponents().length,
     })
   }, [])
-
-  function handleLoadExample() {
-    loadExampleData()
-    setCounts({
-      machines: getMachines().length,
-      molds: getMolds().length,
-      components: getComponents().length,
-    })
-    toast.success("Example data loaded successfully")
-  }
 
   return (
     <div className="flex flex-col h-full">
@@ -97,25 +86,6 @@ export default function DashboardPage() {
               href="/components"
               icon={<Puzzle className="h-5 w-5" />}
             />
-          </div>
-        </section>
-
-        {/* Load Example Data */}
-        <section className="rounded-lg border bg-card p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h3 className="font-semibold text-card-foreground">
-                Get started quickly
-              </h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Load example machines, molds, and components to try the
-                scheduler right away.
-              </p>
-            </div>
-            <Button variant="secondary" onClick={handleLoadExample}>
-              <Database className="mr-2 h-4 w-4" />
-              Load Example Data
-            </Button>
           </div>
         </section>
       </div>
