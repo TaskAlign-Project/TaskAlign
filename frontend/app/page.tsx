@@ -6,17 +6,28 @@ import { Cog, Box, Puzzle, CalendarClock } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { getMachines, getMolds, getComponents } from "@/lib/storage"
+import { getActivePlan } from "@/lib/storage"
 
 export default function DashboardPage() {
   const [counts, setCounts] = useState({ machines: 0, molds: 0, components: 0 })
 
   useEffect(() => {
-    setCounts({
-      machines: getMachines().length,
-      molds: getMolds().length,
-      components: getComponents().length,
-    })
+    const refresh = () => {
+      const plan = getActivePlan()
+      setCounts({
+        machines: plan?.machines?.length ?? 0,
+        molds: plan?.molds?.length ?? 0,
+        components: plan?.components?.length ?? 0,
+      })
+    }
+
+    refresh()
+    window.addEventListener("focus", refresh)
+    window.addEventListener("activePlanChanged", refresh)
+    return () => {
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("activePlanChanged", refresh)
+    }
   }, [])
 
   return (
