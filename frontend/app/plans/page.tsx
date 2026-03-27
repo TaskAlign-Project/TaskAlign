@@ -36,6 +36,7 @@ export default function PlansPage() {
     setLoading(true)
     try {
       const data = await plansApi.list()
+      console.log("plans from API:", JSON.stringify(data[0], null, 2)) // inspect first plan
       setPlans(data)
     } catch (error) {
       toast.error("Failed to load plans from server")

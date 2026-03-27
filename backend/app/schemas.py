@@ -107,3 +107,10 @@ class PlanUpdate(BaseModel):
     pop_size: Optional[int] = None
     n_generations: Optional[int] = None
     mutation_rate: Optional[float] = None
+
+class PlanWithCounts(Plan):
+    machine_count: int = 0
+    mold_count: int = 0
+    component_count: int = 0
+    run_count: int = 0
+    last_run_at: Optional[str] = None

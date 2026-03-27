@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from app.database import get_db
 from app.models import db_models
 from app import schemas
+from app.services.check_scheduler import run_all_rule_checks, check_unmet
+from sqlalchemy import func
 
 router = APIRouter()
 
@@ -206,9 +208,36 @@ def import_components(
 
 # --- PLANS ---
 
-@router.get("/plans", response_model=List[schemas.Plan])
+# @router.get("/plans", response_model=List[schemas.Plan])
+# def get_plans(db: Session = Depends(get_db)):
+#     return db.query(db_models.Plan).all()
+
+@router.get("/plans", response_model=List[schemas.PlanWithCounts])
 def get_plans(db: Session = Depends(get_db)):
-    return db.query(db_models.Plan).all()
+    plans = db.query(db_models.Plan).all()
+    result = []
+    for plan in plans:
+        machine_count = db.query(func.count(db_models.Machine.id)).scalar()
+        mold_count = db.query(func.count(db_models.Mold.id)).scalar()
+        component_count = db.query(func.count(db_models.Component.id)).filter(
+            db_models.Component.plan_id == plan.id
+        ).scalar()
+        run_count = db.query(func.count(db_models.Run.id)).filter(
+            db_models.Run.plan_id == plan.id
+        ).scalar()
+        last_run = db.query(db_models.Run.run_at).filter(
+            db_models.Run.plan_id == plan.id
+        ).order_by(db_models.Run.run_at.desc()).first()
+
+        result.append({
+            **plan.__dict__,
+            "machine_count": machine_count,
+            "mold_count": mold_count,
+            "component_count": component_count,
+            "run_count": run_count,
+            "last_run_at": last_run[0].isoformat() if last_run else None,
+        })
+    return result
 
 @router.post("/plans", response_model=schemas.Plan)
 def create_plan(plan: schemas.PlanCreate, db: Session = Depends(get_db)):
