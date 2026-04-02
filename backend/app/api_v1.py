@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
@@ -6,12 +6,66 @@ from app.models import db_models
 from app import schemas
 from app.services.check_scheduler import run_all_rule_checks, check_unmet
 from sqlalchemy import func
+from datetime import datetime, date, time
+from pydantic import BaseModel as PydanticBase
+import openpyxl
+import io
+import uuid
 
 router = APIRouter()
 
-from fastapi import UploadFile, File, Query
-import openpyxl
-import io
+# ---- Pydantic models (must be defined before use) ----
+
+class AssignmentItem(PydanticBase):
+    day: int
+    date: str
+    machine_id: str
+    machine_name: str
+    machine_group: str
+    sequence_in_day: int
+    task_type: str
+    used_hours: float
+    start_hour: float
+    end_hour: float
+    start_datetime: str
+    end_datetime: str
+    component_id: Optional[str] = None
+    produced_qty: Optional[int] = None
+    mold_id: Optional[str] = None
+    from_mold_id: Optional[str] = None
+    to_mold_id: Optional[str] = None
+    from_color: Optional[str] = None
+    to_color: Optional[str] = None
+    color: Optional[str] = None
+    utilization: Optional[float] = None
+
+
+class SaveManualRunRequest(PydanticBase):
+    assignments: List[AssignmentItem]
+    source: str = "manual_adjust"
+
+
+class CheckScheduleRequest(PydanticBase):
+    assignments: List[AssignmentItem]
+
+
+class RuleViolation(PydanticBase):
+    rule: str
+    detail: str
+
+
+class UnmetDetail(PydanticBase):
+    component_id: str
+    required: int
+    produced: int
+    shortfall: int
+
+
+class CheckScheduleResponse(PydanticBase):
+    against_rule: bool
+    has_unmet: bool
+    violations: List[RuleViolation]
+    unmet_details: List[UnmetDetail]
 
 # Helper 
 def parse_date(val):
@@ -379,7 +433,6 @@ def update_component(component_id: str, component: schemas.ComponentCreate, db: 
 
 from app.models.models import Machine as GAMachine, Mold as GAMold, ProductComponent as GAComponent
 from app.services.ga_scheduler import ga_optimize_v2
-from datetime import datetime, date, time
 
 # --- RUNS ---
 
@@ -495,9 +548,70 @@ def run_plan(plan_id: str, db: Session = Depends(get_db)):
 def get_plan_runs(plan_id: str, db: Session = Depends(get_db)):
     return db.query(db_models.Run).filter(db_models.Run.plan_id == plan_id).order_by(db_models.Run.run_at.desc()).all()
 
+class SaveManualRunRequest(PydanticBase):
+    assignments: List[AssignmentItem]
+    source: str = "manual_adjust"
+
+@router.post("/plans/{plan_id}/runs", response_model=schemas.Run)
+def save_manual_run(plan_id: str, body: SaveManualRunRequest, db: Session = Depends(get_db)):
+    """Save a manually adjusted assignment list as a new run."""
+    db_plan = db.query(db_models.Plan).filter(db_models.Plan.id == plan_id).first()
+    if not db_plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    run_name = f"Manual Adjust {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+
+    db_run = db_models.Run(
+        plan_id=plan_id,
+        run_name=run_name,
+        status="completed",
+        assignments=[a.model_dump() for a in body.assignments],
+        score=None,
+        unmet=None,
+    )
+    db.add(db_run)
+    db.commit()
+    db.refresh(db_run)
+    return db_run
+
 @router.get("/runs/{run_id}", response_model=schemas.Run)
 def get_run(run_id: str, db: Session = Depends(get_db)):
     db_run = db.query(db_models.Run).filter(db_models.Run.id == run_id).first()
     if not db_run:
         raise HTTPException(status_code=404, detail="Run not found")
     return db_run
+
+# --- CHECK SCHEDULE ---
+
+@router.post("/plans/{plan_id}/check", response_model=CheckScheduleResponse)
+def check_schedule(plan_id: str, body: CheckScheduleRequest, db: Session = Depends(get_db)):
+   # 1. Fetch plan components for unmet check
+   db_components = db.query(db_models.Component).filter(
+       db_models.Component.plan_id == plan_id
+   ).all()
+   if not db_components:
+       raise HTTPException(status_code=404, detail="Plan components not found")
+
+
+   assignments = body.assignments
+
+
+   # ── Rule Checks (delegated to check_scheduler service) ─────────
+   raw_violations = run_all_rule_checks(assignments)
+   violations = [RuleViolation(**v) for v in raw_violations]
+
+
+   # ── Unmet Check (delegated to check_scheduler service) ─────────
+   raw_unmet = check_unmet(assignments, db_components)
+   unmet_details = [UnmetDetail(**u) for u in raw_unmet]
+
+
+   return CheckScheduleResponse(
+       against_rule=len(violations) > 0,
+       has_unmet=len(unmet_details) > 0,
+       violations=violations,
+       unmet_details=unmet_details,
+   )
+
+
+
