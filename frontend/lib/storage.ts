@@ -246,9 +246,21 @@ export function getActivePlanId(): string | null {
   return getItem<string | null>(KEYS.activePlanId, null)
 }
 
+// export function setActivePlanId(id: string | null, plan?: Plan | null): void {
+//   setItem(KEYS.activePlanId, id)
+//   setItem(KEYS.activePlan, plan ?? null)   // ← cache the full plan object
+//   if (typeof window !== "undefined") {
+//     window.dispatchEvent(new CustomEvent("activePlanChanged", { detail: { id } }))
+//   }
+// }
+
 export function setActivePlanId(id: string | null, plan?: Plan | null): void {
   setItem(KEYS.activePlanId, id)
-  setItem(KEYS.activePlan, plan ?? null)   // ← cache the full plan object
+
+  // Always resolve from plans list if not provided
+  const resolved = plan !== undefined ? plan : (id ? getPlanById(id) : null)
+  setItem(KEYS.activePlan, resolved ?? null)
+
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("activePlanChanged", { detail: { id } }))
   }
@@ -417,4 +429,18 @@ export function addDemoRunToActivePlan(): PlanRun | null {
 
   appendPlanRun(planId, run)
   return run
+}
+
+// Normalize a raw DB assignment to the frontend Assignment shape
+function normalizeAssignment(raw: any): Assignment {
+  return {
+    ...raw,
+    // DB uses start_hour/end_hour; frontend uses start_hour_clock/end_hour_clock
+    start_hour_clock: raw.start_hour_clock ?? raw.start_hour ?? 0,
+    end_hour_clock:   raw.end_hour_clock   ?? raw.end_hour   ?? 0,
+    // DB uses machine_id but may not have machine_group
+    machine_group: raw.machine_group ?? "",
+    // Ensure date is present
+    date: raw.date ?? raw.start_datetime?.split("T")[0] ?? "",
+  }
 }

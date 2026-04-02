@@ -7,17 +7,36 @@ import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getActivePlan } from "@/lib/storage"
+import { plansApi } from "@/lib/api"
 
 export default function DashboardPage() {
   const [counts, setCounts] = useState({ machines: 0, molds: 0, components: 0 })
 
   useEffect(() => {
-    const refresh = () => {
-      const plan = getActivePlan()
+    async function refresh() {
+      const plan = getActivePlan() as any
+      if (!plan?.id) {
+        setCounts({ machines: 0, molds: 0, components: 0 })
+        return
+      }
+
+      // If counts missing from cache, fetch fresh from API
+      if (plan.machine_count == null) {
+        try {
+          const fresh = await plansApi.getById(plan.id)  // or plansApi.get(plan.id)
+          setCounts({
+            machines: fresh?.machine_count ?? 0,
+            molds:    fresh?.mold_count    ?? 0,
+            components: fresh?.component_count ?? 0,
+          })
+          return
+        } catch {}
+      }
+
       setCounts({
-        machines: plan?.machines?.length ?? 0,
-        molds: plan?.molds?.length ?? 0,
-        components: plan?.components?.length ?? 0,
+        machines: plan.machine_count ?? 0,
+        molds:    plan.mold_count    ?? 0,
+        components: plan.component_count ?? 0,
       })
     }
 

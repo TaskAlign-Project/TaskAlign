@@ -124,26 +124,75 @@ export default function AdjustPage() {
   const [currentRun, setCurrentRunState] = useState<PlanRun | null>(null)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [machines, setMachines] = useState<PlanMachine[]>([])
 
   useEffect(() => {
     const activePlan = getActivePlan()
     setPlan(activePlan)
+
     if (activePlan) {
-      const run = getCurrentRun(activePlan.id)
-      setCurrentRunState(run)
-      setSelectedRunId(run?.id ?? null)
+      const baseUrl = "http://localhost:8000"
+
+      // Fetch machines
+      fetch(`${baseUrl}/api/v1/machines`)
+        .then((res) => res.json())
+        .then((data: any[]) => {
+          // DB returns { id, code, name, group, status, ... }
+          // Normalize to PlanMachine shape (id = code)
+          setMachines(data.map(m => ({
+            id: m.code ?? m.id,
+            name: m.name,
+            group: m.group,
+            tonnage: m.tonnage,
+            hours_per_day: m.hours_per_day,
+            efficiency: m.efficiency,
+            status: m.status,
+          })))
+        })
+        .catch((err) => console.error("Failed to fetch machines:", err))
+
+      // Fetch runs (existing code)
+      // Fetch runs
+      fetch(`${baseUrl}/api/v1/plans/${activePlan.id}/runs`)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json()
+        })
+        .then((runs: any[]) => {
+          if (runs && runs.length > 0) {
+            const latestRun = runs[0]
+            const normalizedRun = {
+              ...latestRun,
+              assignments: (latestRun.assignments ?? []).map(normalizeAssignment),
+            }
+            setCurrentRunState(normalizedRun)
+            setSelectedRunId(latestRun.id)
+            setPlan((prev) => prev ? { ...prev, runs } : prev)
+          }
+        })
+        .catch((err) => console.error("Failed to fetch runs:", err))
+        .finally(() => setLoaded(true))
+    } else {
+      setLoaded(true)
     }
-    setLoaded(true)
   }, [])
 
-  function handleRunChange(runId: string) {
+  async function handleRunChange(runId: string) {
     if (!plan) return
-    const run = plan.runs.find((r) => r.id === runId)
-    if (run) {
-      setCurrentRun(plan.id, runId)
-      setCurrentRunState(run)
+    const baseUrl = "http://localhost:8000"
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/runs/${runId}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const run = await res.json()
+      const normalizedRun = {
+        ...run,
+        assignments: (run.assignments ?? []).map(normalizeAssignment),
+      }
+      setCurrentRunState(normalizedRun)
       setSelectedRunId(runId)
       toast.success("Switched to selected run")
+    } catch {
+      toast.error("Failed to load run")
     }
   }
 
@@ -212,6 +261,7 @@ export default function AdjustPage() {
     )
   }
 
+  // In AdjustPage return:
   return (
     <AdjustContent
       plan={plan}
@@ -219,6 +269,7 @@ export default function AdjustPage() {
       selectedRunId={selectedRunId}
       onRunChange={handleRunChange}
       onLoadDemo={loadDemo}
+      machines={machines}   // ← add this
     />
   )
 }
@@ -229,19 +280,24 @@ function AdjustContent({
   currentRun,
   selectedRunId,
   onRunChange,
+  machines,             // ← add
 }: {
   plan: Plan
   currentRun: PlanRun
   selectedRunId: string | null
   onRunChange: (runId: string) => void
   onLoadDemo: () => void
+  machines: PlanMachine[]   // ← add
 }) {
-  const startDate = currentRun.request_snapshot?.current_date ?? plan.setup.current_date ?? "2026-01-01"
+  const startDate =
+    currentRun.request_snapshot?.current_date ??
+    (plan as any).current_date ??               // DB plan has current_date at top level
+    plan.setup?.current_date ??
+    "2026-01-01"
   
-  // Original assignments (immutable reference)
   const originalAssignments = useMemo(
-    () => currentRun.result.assignments,
-    [currentRun.result.assignments]
+    () => (currentRun as any).assignments ?? [],
+    [currentRun]
   )
 
   // Editable assignments state
@@ -299,15 +355,15 @@ function AdjustContent({
 
   const machineGroupMap = useMemo(() => {
     const map = new Map<string, string>()
-    for (const m of plan.machines) {
+    for (const m of machines) {
       map.set(m.id, m.group)
     }
     return map
-  }, [plan.machines])
+  }, [machines])
 
   const machineGroups = useMemo(
-    () => [...new Set(plan.machines.map((m) => m.group).filter((g) => g && g.trim() !== ""))].sort(),
-    [plan.machines]
+    () => [...new Set(machines.map((m) => m.group).filter((g) => g && g.trim() !== ""))].sort(),
+    [machines]
   )
 
   // Filter assignments
@@ -424,19 +480,103 @@ function AdjustContent({
     setValidationResult(null)
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 800))
+      const planId = plan.id
 
-      // Client-side validation
-      const result = validatePlan(assignments, plan.machines, overlaps)
+      // Map EditableAssignment → AssignmentItem shape the API expects
+      const payload = {
+        assignments: assignments.map((a) => ({
+          day: a.day,
+          date: a.date ?? "",
+          machine_id: a.machine_id,
+          machine_name: a.machine_name,
+          machine_group: a.machine_group ?? "",
+          sequence_in_day: a.sequence_in_day ?? 0,
+          task_type: a.task_type,
+          used_hours: a.used_hours,
+          start_hour: a.start_hour_clock,
+          end_hour: a.end_hour_clock,
+          start_datetime: a.start_datetime ?? "",
+          end_datetime: a.end_datetime ?? "",
+          component_id: a.component_id ?? null,
+          produced_qty: a.produced_qty ?? null,
+          mold_id: a.mold_id ?? null,
+          from_mold_id: a.from_mold_id ?? null,
+          to_mold_id: a.to_mold_id ?? null,
+          from_color: a.from_color ?? null,
+          to_color: a.to_color ?? null,
+          color: a.color ?? null,
+          utilization: a.utilization ?? null,
+        })),
+      }
+
+      const res = await fetch(
+        `http://localhost:8000/api/v1/plans/${planId}/check`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      )
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail ?? "Check failed")
+      }
+
+      const data = await res.json()
+
+      // Map API response → ValidationResult shape used by the UI
+      const result: ValidationResult = {
+        valid: !data.against_rule && !data.has_unmet,
+        violations: [
+          ...data.violations.map((v: { rule: string; detail: string }) => ({
+            severity: "error" as const,
+            type: v.rule,
+            message: v.detail,
+          })),
+          ...data.unmet_details.map((u: { component_id: string; required: number; produced: number; shortfall: number }) => ({
+            severity: "warning" as const,
+            type: "Unmet Demand",
+            message: `${u.component_id}: need ${u.required}, produced ${u.produced}, short ${u.shortfall}`,
+          })),
+        ],
+      }
+
       setValidationResult(result)
 
       if (result.valid) {
-        toast.success("Plan is valid!")
+        // Save as a new run for the current active plan
+        const saveRes = await fetch(
+          `http://localhost:8000/api/v1/plans/${planId}/runs`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...payload,
+              source: "manual_adjust",
+            }),
+          }
+        )
+
+        if (!saveRes.ok) {
+          let msg = "Saved locally but failed to persist run"
+          try {
+            const err = await saveRes.json()
+            msg = err.detail ?? msg
+          } catch {
+            msg = `HTTP ${saveRes.status}`
+          }
+          toast.warning(msg)
+        } else {
+          const newRun = await saveRes.json()
+          toast.success(`Plan valid & saved as new run (${newRun.run_name ?? newRun.id})`)
+        }
       } else {
         toast.error(`Found ${result.violations.length} issue(s)`)
       }
-    } catch {
-      toast.error("Validation failed")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Validation failed"
+      toast.error(message)
     } finally {
       setValidating(false)
     }
@@ -462,7 +602,7 @@ function AdjustContent({
                 <SelectValue placeholder="Select run" />
               </SelectTrigger>
               <SelectContent>
-                {plan.runs
+                {(plan.runs ?? [])
                   .filter((run) => run.id && run.id.trim() !== "")
                   .map((run, idx) => (
                     <SelectItem key={run.id} value={run.id}>
@@ -717,8 +857,8 @@ function AdjustContent({
   task={selectedTask}
   originalTask={originalAssignments[selectedTask._originalIndex] ?? null}
   startDate={startDate}
-  machines={plan.machines}
-  components={plan.components}
+  machines={machines}
+  components={plan.components ?? []}
   days={days}
   onUpdate={(updates) => updateTask(selectedTask._originalIndex, updates)}
   onReset={() => handleResetTask(selectedTask._originalIndex)}
@@ -1048,7 +1188,7 @@ function TaskInspector({
   task: EditableAssignment
   originalTask: Assignment | null
   startDate: string
-  machines: PlanMachine[]
+  machines?: PlanMachine[]
   components: { id: string; cycle_time_sec: number }[]
   days: number[]
   onUpdate: (updates: Partial<EditableAssignment>) => void
@@ -1449,5 +1589,15 @@ function validatePlan(
   return {
     valid: violations.length === 0,
     violations,
+  }
+}
+
+function normalizeAssignment(raw: any): Assignment {
+  return {
+    ...raw,
+    start_hour_clock: raw.start_hour_clock ?? raw.start_hour ?? 0,
+    end_hour_clock:   raw.end_hour_clock   ?? raw.end_hour   ?? 0,
+    machine_group:    raw.machine_group    ?? "",
+    date:             raw.date ?? raw.start_datetime?.split("T")[0] ?? "",
   }
 }

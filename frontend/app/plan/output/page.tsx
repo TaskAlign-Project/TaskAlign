@@ -116,14 +116,26 @@ export default function OutputPage() {
           machinesApi.list(),
         ])
         console.log("fetchedRuns:", JSON.stringify(fetchedRuns, null, 2))
+        // Normalize start_hour/end_hour → start_hour_clock/end_hour_clock
+        const normalizedRuns = fetchedRuns.map((run: any) => ({
+          ...run,
+          assignments: (run.assignments ?? []).map((a: any) => ({
+            ...a,
+            start_hour_clock: a.start_hour_clock ?? a.start_hour ?? 0,
+            end_hour_clock:   a.end_hour_clock   ?? a.end_hour   ?? 0,
+            machine_group:    a.machine_group    ?? "",
+            date:             a.date ?? a.start_datetime?.split("T")[0] ?? "",
+          })),
+        }))
+
         setPlan(fetchedPlan)
-        setRuns(fetchedRuns)
+        setRuns(normalizedRuns)
         setMachines(fetchedMachines)
 
         const savedRunId = getCurrentRunId(activePlan.id)
         const run = savedRunId
-          ? fetchedRuns.find((r) => r.id === savedRunId) ?? fetchedRuns.at(-1)
-          : fetchedRuns.at(-1)
+          ? normalizedRuns.find((r: any) => r.id === savedRunId) ?? normalizedRuns.at(-1)
+          : normalizedRuns.at(-1)
         setCurrentRunState(run ?? null)
         setSelectedRunId(run?.id ?? null)
       } catch (e) {
