@@ -1,3 +1,5 @@
+// output/page.tsx
+
 "use client"
 
 import { useEffect, useState, useMemo, useCallback } from "react"
@@ -360,6 +362,13 @@ function OutputContent({
 
   const runIndex = runs.findIndex((r) => r.id === selectedRunId)
   const runNumber = runIndex >= 0 ? runIndex + 1 : runs.length
+  const sortedRuns = [...runs]
+  .filter((run) => run.id && run.id.trim() !== "")
+  .sort(
+    (a, b) =>
+      new Date(b.run_at ?? 0).getTime() -
+      new Date(a.run_at ?? 0).getTime()
+  )
 
   return (
     <div className="flex flex-col h-full">
@@ -380,13 +389,22 @@ function OutputContent({
                 <SelectValue placeholder="Select run" />
               </SelectTrigger>
               <SelectContent>
-                {runs
+                  {sortedRuns.map((run, idx) => (
+                  <SelectItem key={run.id} value={run.id}>
+                    Run #{sortedRuns.length - idx} -{" "}
+                    {run.run_at
+                      ? new Date(run.run_at).toLocaleDateString()
+                      : "No date"}
+                  </SelectItem>
+                ))}
+
+                {/* {runs
                   .filter((run) => run.id && run.id.trim() !== "")
                   .map((run, idx) => (
                     <SelectItem key={run.id} value={run.id}>
                       Run #{idx + 1} - {run.run_at ? new Date(run.run_at).toLocaleDateString() : "No date"}
                     </SelectItem>
-                  ))}
+                  ))} */}
               </SelectContent>
             </Select>
           </div>

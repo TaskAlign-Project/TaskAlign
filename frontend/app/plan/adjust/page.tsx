@@ -1,3 +1,5 @@
+// adjust/page.tsx
+
 "use client"
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react"
@@ -107,16 +109,28 @@ function parseTimeToHour(time: string): number {
 }
 
 function formatDateFromDay(day: number, startDate: string): string {
-  const base = new Date(startDate)
-  base.setDate(base.getDate() + day - 1)
-  return base.toISOString().split("T")[0]
+  const [y, m, d] = startDate.split("-").map(Number)
+  const base = new Date(y, m - 1, d + day - 1)
+  const yy = base.getFullYear()
+  const mm = String(base.getMonth() + 1).padStart(2, "0")
+  const dd = String(base.getDate()).padStart(2, "0")
+  return `${yy}-${mm}-${dd}`
+  // const base = new Date(startDate)
+  // base.setDate(base.getDate() + day - 1)
+  // return base.toISOString().split("T")[0]
 }
 
 function dayFromDate(date: string, startDate: string): number {
-  const start = new Date(startDate)
-  const target = new Date(date)
+  const [sy, sm, sd] = startDate.split("-").map(Number)
+  const [ty, tm, td] = date.split("-").map(Number)
+  const start = new Date(sy, sm - 1, sd)
+  const target = new Date(ty, tm - 1, td)
   const diff = Math.floor((target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
   return diff + 1
+  // const start = new Date(startDate)
+  // const target = new Date(date)
+  // const diff = Math.floor((target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+  // return diff + 1
 }
 
 export default function AdjustPage() {
@@ -268,7 +282,7 @@ export default function AdjustPage() {
       currentRun={currentRun}
       selectedRunId={selectedRunId}
       onRunChange={handleRunChange}
-      onLoadDemo={loadDemo}
+      // onLoadDemo={loadDemo}
       machines={machines}   // ← add this
     />
   )
@@ -286,7 +300,7 @@ function AdjustContent({
   currentRun: PlanRun
   selectedRunId: string | null
   onRunChange: (runId: string) => void
-  onLoadDemo: () => void
+  // onLoadDemo: () => void
   machines: PlanMachine[]   // ← add
 }) {
   const startDate =
@@ -602,13 +616,29 @@ function AdjustContent({
                 <SelectValue placeholder="Select run" />
               </SelectTrigger>
               <SelectContent>
-                {(plan.runs ?? [])
+                {/* {(plan.runs ?? [])
                   .filter((run) => run.id && run.id.trim() !== "")
                   .map((run, idx) => (
                     <SelectItem key={run.id} value={run.id}>
                       Run #{idx + 1} - {new Date(run.created_at).toLocaleDateString()}
                     </SelectItem>
-                  ))}
+                  ))} */}
+                    {(() => {
+                    const sortedRuns = [...(plan.runs ?? [])]
+                      .filter((run) => run.id && run.id.trim() !== "")
+                      .sort((a, b) =>
+                        new Date(b.run_at ?? b.created_at ?? 0).getTime() -
+                        new Date(a.run_at ?? a.created_at ?? 0).getTime()
+                      )
+                    return sortedRuns.map((run, idx) => (
+                      <SelectItem key={run.id} value={run.id}>
+                        Run #{sortedRuns.length - idx} -{" "}
+                        {run.run_at ?? run.created_at
+                          ? new Date(run.run_at ?? run.created_at).toLocaleDateString()
+                          : "No date"}
+                      </SelectItem>
+                    ))
+                  })()}
               </SelectContent>
             </Select>
           </div>
@@ -1091,13 +1121,18 @@ function DraggableTask({
       newRowIdx = Math.max(0, Math.min(machineRows.length - 1, newRowIdx))
 
       const duration = task.end_hour_clock - task.start_hour_clock
+      const updates: Partial<EditableAssignment> = {}
 
       // Clamp to day boundaries
       if (newStartHour < 0) newStartHour = 0
       if (newStartHour + duration > 24) newStartHour = 24 - duration
+      // if (newStartHour + duration > 24) 
+      // {
+      //     updates.day = task.day + 1
+      //     newStartHour = 0
+      // }
 
       const newMachine = machineRows[newRowIdx]
-      const updates: Partial<EditableAssignment> = {}
 
       if (newStartHour !== task.start_hour_clock) {
         updates.start_hour_clock = newStartHour
