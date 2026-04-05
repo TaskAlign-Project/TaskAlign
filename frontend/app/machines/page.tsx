@@ -1,3 +1,5 @@
+// machines/page.tsx
+
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
@@ -141,8 +143,13 @@ export default function MachinesPage() {
       result = result.filter((m) => m.status === statusFilter)
     }
 
-    return result
-  }, [machines, searchQuery, groupFilter, statusFilter])
+    return result.sort((a, b) =>
+    (a.code ?? a.id).localeCompare(b.code ?? b.id, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    })
+  )
+}, [machines, searchQuery, groupFilter, statusFilter])
 
   if (loading) return null
 
@@ -286,7 +293,7 @@ export default function MachinesPage() {
                           handleStatusChange(m.id, v as MachineStatus)
                         }
                       >
-                        <SelectTrigger className="w-[120px] h-8">
+                        <SelectTrigger className="w-[140px] h-8">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -298,7 +305,7 @@ export default function MachinesPage() {
                           </SelectItem>
                           <SelectItem value="unavailable">
                             <span className="flex items-center gap-2">
-                              <span className="h-2 w-2 rounded-full bg-red-500" />
+                              <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />
                               Unavailable
                             </span>
                           </SelectItem>
