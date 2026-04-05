@@ -246,13 +246,13 @@ export function ScheduleResults({ data }: { data: ScheduleResponse }) {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs">
-                        {a.start_hour_clock.toFixed(1)}
+                        {Number(a.start_hour_clock ?? 0).toFixed(1)}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs">
-                        {a.end_hour_clock.toFixed(1)}
+                        {Number(a.end_hour_clock ?? 0).toFixed(1)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {a.used_hours.toFixed(1)}
+                        {Number(a.used_hours ?? 0).toFixed(1)}
                       </TableCell>
                       <TableCell>
                         {a.task_type === "PRODUCE" ? (
@@ -331,8 +331,8 @@ export function ScheduleResults({ data }: { data: ScheduleResponse }) {
                                   )}
                                   <span className="opacity-70">
                                     {" "}
-                                    {t.start_hour_clock.toFixed(1)}-
-                                    {t.end_hour_clock.toFixed(1)}h
+                                    {(t.start_hour_clock ?? 0).toFixed(1)}-
+                                    {(t.end_hour_clock ?? 0).toFixed(1)}h
                                   </span>
                                 </div>
                               ))}
