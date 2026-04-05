@@ -128,4 +128,16 @@ export interface Plan {
   mutation_rate: number
   created_at: string
   updated_at: string
+  // ✅ เพิ่ม optional fields ที่ API ส่งมาใน list endpoint
+  // machine_count?: number
+  // mold_count?: number
+  // component_count?: number
+  // run_count?: number
+  // last_run_at?: string
+  // unavailable_machines_count?: number
+  // month_label?: string
+  // runs?: PlanRun[]
+  // setup?: PlanSetup
+  // components?: Component[]
+  // request_snapshot?: { current_date?: string }
 }

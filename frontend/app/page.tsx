@@ -9,7 +9,9 @@ import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getActivePlan } from "@/lib/storage"
-import { plansApi } from "@/lib/api"
+// import { plansApi } from "@/lib/api"
+import { machinesApi, moldsApi, componentsApi } from "@/lib/api"
+
 
 export default function DashboardPage() {
   const [counts, setCounts] = useState({ machines: 0, molds: 0, components: 0 })
@@ -22,24 +24,39 @@ export default function DashboardPage() {
         return
       }
 
-      // If counts missing from cache, fetch fresh from API
-      if (plan.machine_count == null) {
-        try {
-          const fresh = await plansApi.getById(plan.id)  // or plansApi.get(plan.id)
-          setCounts({
-            machines: fresh?.machine_count ?? 0,
-            molds:    fresh?.mold_count    ?? 0,
-            components: fresh?.component_count ?? 0,
-          })
-          return
-        } catch {}
+      try {
+        const [machines, molds, components] = await Promise.all([
+          machinesApi.list(),
+          moldsApi.list(),
+          componentsApi.list(plan.id),
+        ])
+        setCounts({
+          machines: machines.length,
+          molds: molds.length,
+          components: components.length,
+        })
+      } catch {
+        setCounts({ machines: 0, molds: 0, components: 0 })
       }
 
-      setCounts({
-        machines: plan.machine_count ?? 0,
-        molds:    plan.mold_count    ?? 0,
-        components: plan.component_count ?? 0,
-      })
+      // If counts missing from cache, fetch fresh from API
+      // if (plan.machine_count == null) {
+      //   try {
+      //     const fresh = await plansApi.getById(plan.id)  // or plansApi.get(plan.id)
+      //     setCounts({
+      //       machines: fresh?.machine_count ?? 0,
+      //       molds:    fresh?.mold_count    ?? 0,
+      //       components: fresh?.component_count ?? 0,
+      //     })
+      //     return
+      //   } catch {}
+      // }
+
+      // setCounts({
+      //   machines: plan.machine_count ?? 0,
+      //   molds:    plan.mold_count    ?? 0,
+      //   components: plan.component_count ?? 0,
+      // })
     }
 
     refresh()
