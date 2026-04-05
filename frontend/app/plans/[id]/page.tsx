@@ -1,3 +1,5 @@
+// plans/[id]/page.tsx
+
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
@@ -170,7 +172,7 @@ export default function PlanSummaryPage() {
             )}
           </div>
         }
-        description={`Created ${new Date(plan.created_at).toLocaleDateString()}`}
+        description={`Created ${new Date(plan.created_at).toLocaleDateString("en-GB")}`}
       />
 
       <div className="flex-1 p-4 md:p-6 flex flex-col gap-6 overflow-y-auto">
@@ -346,7 +348,12 @@ export default function PlanSummaryPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {[...runs].reverse().map((run, idx) => {
+                    {/* {[...runs].reverse().map((run, idx) => {
+                      const runNumber = runs.length - idx */}
+                    {[...runs]
+                      .sort((a, b) => new Date(a.run_at).getTime() - new Date(b.run_at).getTime())
+                      .reverse()
+                      .map((run, idx) => {
                       const runNumber = runs.length - idx
                       const isCurrent = run.id === currentRunId
                       const unmetQty = Object.values(run.unmet ?? {}).reduce((s, v) => s + (v as number), 0)
@@ -357,7 +364,10 @@ export default function PlanSummaryPage() {
                             #{runNumber}
                             {isCurrent && <Badge variant="secondary" className="ml-2 text-[10px]">Current</Badge>}
                           </TableCell>
-                          <TableCell className="text-sm">{new Date(run.run_at).toLocaleString()}</TableCell>
+                          {/* <TableCell className="text-sm">{new Date(run.run_at).toLocaleString()}</TableCell> */}
+                          <TableCell className="text-sm">
+                            {new Date(run.run_at).toLocaleString("en-GB")}
+                          </TableCell>
                           <TableCell>
                             <Badge variant="secondary" className="capitalize">
                               {run.run_name ?? `Run ${runNumber}`}
