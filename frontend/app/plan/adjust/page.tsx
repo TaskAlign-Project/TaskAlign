@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import type { Assignment, Plan, PlanRun, PlanMachine } from "@/lib/types"
+import type { Assignment, Plan, PlanRun, PlanMachine, Component } from "@/lib/types"
 import {
   getActivePlan,
   getCurrentRun,
@@ -139,13 +139,15 @@ export default function AdjustPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [machines, setMachines] = useState<PlanMachine[]>([])
+  const [components, setComponents] = useState<Component[]>([]) // ✅ เพิ่ม
+
 
   useEffect(() => {
     const activePlan = getActivePlan()
     setPlan(activePlan)
 
     if (activePlan) {
-      const baseUrl = "http://localhost:8000"
+      const baseUrl = "http://localhost:8000" // ???
 
       // Fetch machines
       fetch(`${baseUrl}/api/v1/machines`)
@@ -155,6 +157,7 @@ export default function AdjustPage() {
           // Normalize to PlanMachine shape (id = code)
           setMachines(data.map(m => ({
             id: m.code ?? m.id,
+            code: m.code ?? m.id,  // ✅ เพิ่ม code
             name: m.name,
             group: m.group,
             tonnage: m.tonnage,
@@ -165,7 +168,12 @@ export default function AdjustPage() {
         })
         .catch((err) => console.error("Failed to fetch machines:", err))
 
-      // Fetch runs (existing code)
+      // เพิ่ม fetch components
+      fetch(`${baseUrl}/api/v1/plans/${activePlan.id}/components`)
+        .then((res) => res.json())
+        .then((data: Component[]) => setComponents(data))
+        .catch((err) => console.error("Failed to fetch components:", err))
+
       // Fetch runs
       fetch(`${baseUrl}/api/v1/plans/${activePlan.id}/runs`)
         .then((res) => {
@@ -284,6 +292,7 @@ export default function AdjustPage() {
       onRunChange={handleRunChange}
       // onLoadDemo={loadDemo}
       machines={machines}   // ← add this
+      components={components} // ✅ เพิ่ม
     />
   )
 }
@@ -295,6 +304,7 @@ function AdjustContent({
   selectedRunId,
   onRunChange,
   machines,             // ← add
+  components
 }: {
   plan: Plan
   currentRun: PlanRun
@@ -302,6 +312,7 @@ function AdjustContent({
   onRunChange: (runId: string) => void
   // onLoadDemo: () => void
   machines: PlanMachine[]   // ← add
+  components: Component[]
 }) {
   const startDate =
     currentRun.request_snapshot?.current_date ??
@@ -492,6 +503,33 @@ function AdjustContent({
   async function handleSaveValidate() {
     setValidating(true)
     setValidationResult(null)
+
+    // ✅ เพิ่ม qty check ก่อน call API
+    const qtyViolations = assignments
+      .filter(a => a.task_type === "PRODUCE" && a.produced_qty != null)
+      .filter(a => {
+        const comp = components.find(
+          c => c.component_id === a.component_id || c.id === a.component_id
+        )
+        return comp && a.produced_qty! > comp.quantity
+      })
+
+    if (qtyViolations.length > 0) {
+      const violations = qtyViolations.map(a => {
+        const comp = components.find(
+          c => c.component_id === a.component_id || c.id === a.component_id
+        )
+        return {
+          severity: "error" as const,
+          type: "Qty Exceeded",
+          message: `${a.component_id}: produced ${a.produced_qty?.toLocaleString()} exceeds max ${comp?.quantity.toLocaleString()}`,
+        }
+      })
+      setValidationResult({ valid: false, violations })
+      toast.error(`Found ${violations.length} qty violation(s)`)
+      setValidating(false)
+      return  // ← หยุดไม่ให้ไป call API
+    }
 
     try {
       const planId = plan.id
@@ -888,7 +926,8 @@ function AdjustContent({
   originalTask={originalAssignments[selectedTask._originalIndex] ?? null}
   startDate={startDate}
   machines={machines}
-  components={plan.components ?? []}
+  // components={plan.components ?? []}
+  components={components} 
   days={days}
   onUpdate={(updates) => updateTask(selectedTask._originalIndex, updates)}
   onReset={() => handleResetTask(selectedTask._originalIndex)}
@@ -1224,7 +1263,8 @@ function TaskInspector({
   originalTask: Assignment | null
   startDate: string
   machines?: PlanMachine[]
-  components: { id: string; cycle_time_sec: number }[]
+  // components: { id: string; cycle_time_sec: number }[]
+  components: Component[]
   days: number[]
   onUpdate: (updates: Partial<EditableAssignment>) => void
   onReset: () => void
@@ -1325,6 +1365,20 @@ function TaskInspector({
   function handleProducedQtyChange(value: string) {
     setProducedQtyValue(value)
     const qty = parseInt(value) || 0
+
+    const comp = (components as Component[]).find(
+      c => c.id === task.component_id || c.component_id === task.component_id
+    )
+    const maxQty = comp?.quantity ?? Infinity
+
+    if (qty > maxQty) {
+    setLocalError(`Qty cannot exceed required quantity (${maxQty.toLocaleString()})`)
+    // ยัง update ค่าไว้ให้ user แก้ได้ แต่ mark error
+    onUpdate({ produced_qty: qty })
+    return
+    }
+
+    setLocalError(null)
     if (qty >= 0) {
       // Use the stored original cycle time (calculated once from original task data)
       if (originalCycleTimeSec > 0) {
