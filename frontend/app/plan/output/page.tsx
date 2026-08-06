@@ -7,7 +7,6 @@ import Link from "next/link"
 import {
   ArrowLeft,
   Download,
-  ClipboardCopy,
   FileQuestion,
   Search,
   ChevronDown,
@@ -46,19 +45,19 @@ import {
 } from "@/components/ui/collapsible"
 import { toast } from "sonner"
 import { GanttChart } from "@/components/schedule/GanttChart"
-import type {Assignment, Plan, PlanRun, Machine } from "@/lib/types"
+import type { Assignment, Component, Plan, PlanRun, Machine } from "@/lib/types"
 import {
   getActivePlan,
   setCurrentRun,
   getCurrentRunId,
 } from "@/lib/storage"
-import { plansApi, runsApi, machinesApi } from "@/lib/api"
+import { plansApi, runsApi, machinesApi, componentsApi } from "@/lib/api"
 import {
   groupByMachineThenDay,
   computeDailySummaries,
-  downloadCSV,
-  assignmentsToCSV,
-  filterAssignmentsBySearch,
+  downloadXLSX,
+  filterTimelineAssignments,
+  getTimelineSearchEmptyMessage,
   resolveScheduleStartDate,
   formatRunDate,
 } from "@/lib/schedule-utils"
@@ -104,6 +103,7 @@ export default function OutputPage() {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [runs, setRuns] = useState<PlanRun[]>([])
   const [machines, setMachines] = useState<Machine[]>([])
+  const [components, setComponents] = useState<Component[]>([])
   const [currentRun, setCurrentRunState] = useState<PlanRun | null>(null)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -115,10 +115,11 @@ export default function OutputPage() {
       if (!activePlan) { setLoaded(true); return }
 
       try {
-        const [fetchedPlan, fetchedRuns, fetchedMachines] = await Promise.all([
+        const [fetchedPlan, fetchedRuns, fetchedMachines, fetchedComponents] = await Promise.all([
           plansApi.get(activePlan.id),
           runsApi.list(activePlan.id),
           machinesApi.list(),
+          componentsApi.list(activePlan.id),
         ])
         console.log("fetchedRuns:", JSON.stringify(fetchedRuns, null, 2))
         // Normalize start_hour/end_hour → start_hour_clock/end_hour_clock
@@ -136,6 +137,7 @@ export default function OutputPage() {
         setPlan(fetchedPlan)
         setRuns(normalizedRuns)
         setMachines(fetchedMachines)
+        setComponents(fetchedComponents)
 
         const savedRunId = getCurrentRunId(activePlan.id)
         const run = savedRunId
@@ -227,6 +229,7 @@ if (error) {
       plan={plan}
       runs={runs}
       machines={machines}
+      components={components}
       currentRun={currentRun}
       selectedRunId={selectedRunId}
       onRunChange={handleRunChange}
@@ -239,6 +242,7 @@ function OutputContent({
   plan,
   runs,
   machines,
+  components,
   currentRun,
   selectedRunId,
   onRunChange,
@@ -246,6 +250,7 @@ function OutputContent({
   plan: Plan
   runs: PlanRun[]
   machines: Machine[]
+  components: Component[]
   currentRun: PlanRun
   selectedRunId: string | null
   onRunChange: (runId: string) => void
@@ -329,14 +334,14 @@ function OutputContent({
     arr = arr.filter((a) => activeTypes.has(a.task_type))
     // Search
     if (searchQuery.trim()) {
-      arr = filterAssignmentsBySearch(arr, searchQuery)
+      arr = filterTimelineAssignments(arr, searchQuery, components)
     }
     // Sort by day, then machine, then start hour
     arr = [...arr].sort(
       (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour_clock - b.start_hour_clock
     )
     return arr
-  }, [data.assignments, filterDayStart, filterDayEnd, filterMachine, filterMachineGroup, machineGroupMap, activeTypes, searchQuery])
+  }, [data.assignments, filterDayStart, filterDayEnd, filterMachine, filterMachineGroup, machineGroupMap, activeTypes, searchQuery, components])
 
   const timelineGrouped = useMemo(
     () => groupByMachineThenDay(filtered),
@@ -347,13 +352,6 @@ function OutputContent({
     () => computeDailySummaries(filtered),
     [filtered]
   )
-
-  function handleCopyCSV() {
-    const csv = assignmentsToCSV(filtered)
-    navigator.clipboard.writeText(csv).then(() => {
-      toast.success("CSV copied to clipboard")
-    })
-  }
 
   const runIndex = runs.findIndex((r) => r.id === selectedRunId)
   const runNumber = runIndex >= 0 ? runIndex + 1 : runs.length
@@ -431,14 +429,10 @@ function OutputContent({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => downloadCSV(filtered)}
+            onClick={() => downloadXLSX(filtered)}
           >
             <Download className="mr-2 h-3.5 w-3.5" />
-            Export CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleCopyCSV}>
-            <ClipboardCopy className="mr-2 h-3.5 w-3.5" />
-            Copy CSV
+            Export Excel
           </Button>
         </div>
 
@@ -598,6 +592,7 @@ function OutputContent({
               dayStart={filterDayStart !== "all" ? Number(filterDayStart) : undefined}
               dayEnd={filterDayEnd !== "all" ? Number(filterDayEnd) : undefined}
               startDate={startDate}
+              emptyMessage={getTimelineSearchEmptyMessage(searchQuery, components)}
             />
           </TabsContent>
 
@@ -606,7 +601,7 @@ function OutputContent({
             <Legend />
             {Object.keys(timelineGrouped).length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
-                No assignments match the current filters.
+                {getTimelineSearchEmptyMessage(searchQuery, components)}
               </p>
             ) : (
               Object.entries(timelineGrouped)

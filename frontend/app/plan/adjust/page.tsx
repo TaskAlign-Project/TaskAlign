@@ -54,7 +54,8 @@ import {
   type GanttTimeRange,
 } from "@/lib/gantt"
 import {
-  filterAssignmentsBySearch,
+  filterTimelineAssignments,
+  getTimelineSearchEmptyMessage,
   resolveScheduleStartDate,
   formatRunDate,
 } from "@/lib/schedule-utils"
@@ -405,12 +406,12 @@ function AdjustContent({
       arr = arr.filter((a) => machineGroupMap.get(a.machine_id) === filterMachineGroup)
     }
     if (searchQuery.trim()) {
-      arr = filterAssignmentsBySearch(arr, searchQuery)
+      arr = filterTimelineAssignments(arr, searchQuery, components)
     }
     return arr.sort(
       (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour_clock - b.start_hour_clock
     )
-  }, [assignments, filterDayStart, filterDayEnd, filterMachineGroup, machineGroupMap, searchQuery])
+  }, [assignments, filterDayStart, filterDayEnd, filterMachineGroup, machineGroupMap, searchQuery, components])
 
   // Compute time range and grouping from filtered
   const range = useMemo(() => computeTimeRange(filtered), [filtered])
@@ -790,6 +791,11 @@ function AdjustContent({
         <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
           {/* Gantt Chart */}
           <div className="flex-1 rounded-lg border bg-card overflow-hidden">
+            {machineRows.length === 0 ? (
+              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                {getTimelineSearchEmptyMessage(searchQuery, components)}
+              </div>
+            ) : (
             <div className="flex h-full">
               {/* Fixed machine label column */}
               <div
@@ -888,6 +894,7 @@ function AdjustContent({
                 </div>
               </div>
             </div>
+            )}
           </div>
 
           {/* Inspector Panel */}

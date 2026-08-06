@@ -1,4 +1,5 @@
-import type { Assignment, ScheduleResponse } from "./types"
+import type { Assignment, Component, ScheduleResponse } from "./types"
+import * as XLSX from "xlsx"
 
 // ---- localStorage key ----
 export const SCHEDULE_RESULT_KEY = "taskalign:lastScheduleResult"
@@ -99,17 +100,64 @@ export function filterAssignmentsBySearch<T extends Assignment>(
     )
   }
 
-  return assignments.filter((a) =>
-    [
-      a.component_id,
-      a.component_name,
-      a.mold_id,
-      a.from_mold_id,
-      a.to_mold_id,
-      a.machine_id,
-      a.machine_name,
-    ].some((value) => normalizeSearchValue(value).includes(q))
+  // Timeline searches are exact-only. Substring matching makes an absent C1
+  // incorrectly match names such as "Cover (wait_all on C1 + transfer)".
+  return []
+}
+
+type TimelineSearchComponent = Pick<
+  Component,
+  "component_id" | "name" | "quantity" | "finished"
+>
+
+function findCompletedTimelineComponent(
+  query: string,
+  components: TimelineSearchComponent[]
+): TimelineSearchComponent | undefined {
+  const q = normalizeSearchValue(query)
+  if (!q) return undefined
+
+  return components.find(
+    (item) =>
+      (normalizeSearchValue(item.component_id) === q ||
+        normalizeSearchValue(item.name) === q) &&
+      item.quantity > 0 &&
+      item.finished >= item.quantity
   )
+}
+
+/**
+ * Completion is checked before saved run assignments. An older run may still
+ * contain C1 even after C1 has subsequently been marked completed.
+ */
+export function filterTimelineAssignments<T extends Assignment>(
+  assignments: T[],
+  query: string,
+  components: TimelineSearchComponent[]
+): T[] {
+  if (findCompletedTimelineComponent(query, components)) return []
+  return filterAssignmentsBySearch(assignments, query)
+}
+
+/**
+ * Explain an empty timeline search without interrupting the user with a toast.
+ * Completed components are intentionally absent from a newly generated run.
+ */
+export function getTimelineSearchEmptyMessage(
+  query: string,
+  components: TimelineSearchComponent[]
+): string {
+  const trimmedQuery = query.trim()
+  const q = normalizeSearchValue(trimmedQuery)
+  if (!q) return "No assignments match the current filters."
+
+  const component = findCompletedTimelineComponent(trimmedQuery, components)
+
+  if (component) {
+    return `Component “${component.component_id}” is completed and is not included in this timeline.`
+  }
+
+  return `No assignments found for “${trimmedQuery}” in this timeline.`
 }
 
 // ---- Grouping helpers ----
@@ -221,43 +269,60 @@ export function computeDailySummaries(assignments: Assignment[]) {
   return { perMachineDay, perDay }
 }
 
-// ---- CSV export ----
-const CSV_COLUMNS = [
-  "day", "machine_id", "machine_name", "sequence_in_day", "task_type",
-  "start_hour", "end_hour", "used_hours", "utilization",
-  "mold_id", "component_id", "component_name", "produced_qty", "color",
-  "from_color", "to_color", "from_mold_id", "to_mold_id",
-] as const
-
-function formatCSVValue(val: unknown): string {
-  if (val === null || val === undefined) return ""
-  if (typeof val === "number") return Number.isInteger(val) ? String(val) : val.toFixed(4)
-  const str = String(val)
-  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-    return `"${str.replace(/"/g, '""')}"`
-  }
-  return str
+// ---- Excel export ----
+type ExportableAssignment = Assignment & {
+  date?: string
+  start_hour?: number
+  end_hour?: number
 }
 
-export function assignmentsToCSV(assignments: Assignment[]): string {
-  const header = CSV_COLUMNS.join(",")
-  const rows = assignments.map((a) =>
-    CSV_COLUMNS.map((col) => formatCSVValue(a[col as keyof Assignment])).join(",")
-  )
-  return [header, ...rows].join("\n")
+export function buildAssignmentsWorkbook(assignments: Assignment[]): XLSX.WorkBook {
+  const rows = assignments.map((assignment) => {
+    const a = assignment as ExportableAssignment
+    return {
+      Day: a.day,
+      Date: a.date ?? "",
+      "Machine ID": a.machine_id,
+      "Machine Name": a.machine_name,
+      Sequence: a.sequence_in_day,
+      "Task Type": a.task_type,
+      "Start Hour": a.start_hour ?? a.start_hour_clock,
+      "End Hour": a.end_hour ?? a.end_hour_clock,
+      "Used Hours": a.used_hours,
+      Utilization: a.utilization ?? "",
+      Mold: a.mold_id ?? "",
+      "Component ID": a.component_id ?? "",
+      "Component Name": a.component_name ?? "",
+      "Produced Qty": a.produced_qty ?? "",
+      Color: a.color ?? "",
+      "From Color": a.from_color ?? "",
+      "To Color": a.to_color ?? "",
+      "From Mold": a.from_mold_id ?? "",
+      "To Mold": a.to_mold_id ?? "",
+    }
+  })
+
+  const worksheet = XLSX.utils.json_to_sheet(rows)
+  worksheet["!cols"] = [
+    { wch: 8 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 10 },
+    { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+    { wch: 22 }, { wch: 16 }, { wch: 28 }, { wch: 14 }, { wch: 14 },
+    { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 22 },
+  ]
+
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Schedule")
+  return workbook
 }
 
-export function downloadCSV(assignments: Assignment[], filename = "taskalign_schedule.csv") {
-  const csv = assignmentsToCSV(assignments)
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
+export function downloadXLSX(
+  assignments: Assignment[],
+  filename = "taskalign_schedule.xlsx"
+): void {
+  const outputName = filename.toLowerCase().endsWith(".xlsx")
+    ? filename
+    : `${filename}.xlsx`
+  XLSX.writeFile(buildAssignmentsWorkbook(assignments), outputName)
 }
 
 // ---- Demo data ----

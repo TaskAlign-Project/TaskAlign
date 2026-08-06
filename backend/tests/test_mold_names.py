@@ -95,6 +95,7 @@ class MoldNameTests(unittest.TestCase):
         finally:
             session.close()
             Base.metadata.drop_all(engine)
+            engine.dispose()
 
 
 if __name__ == "__main__":

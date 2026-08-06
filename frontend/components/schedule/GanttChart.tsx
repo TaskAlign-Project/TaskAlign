@@ -69,6 +69,8 @@ interface GanttChartProps {
   dayEnd?: number
   /** Start date for the schedule (ISO string), used for displaying real dates */
   startDate?: string
+  /** Message shown when filters produce an empty chart. */
+  emptyMessage?: string
 }
 
 export function GanttChart({
@@ -76,6 +78,7 @@ export function GanttChart({
   dayStart,
   dayEnd,
   startDate = "2026-01-01",
+  emptyMessage = "No assignments to display in the Gantt chart.",
 }: GanttChartProps) {
   const [zoomIdx, setZoomIdx] = useState(1)
   const [hoveredTask, setHoveredTask] = useState<Assignment | null>(null)
@@ -141,7 +144,7 @@ export function GanttChart({
   if (filteredAssignments.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center">
-        No assignments to display in the Gantt chart.
+        {emptyMessage}
       </p>
     )
   }
