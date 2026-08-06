@@ -18,6 +18,30 @@ export function storeResult(data: ScheduleResponse): void {
   localStorage.setItem(SCHEDULE_RESULT_KEY, JSON.stringify(data))
 }
 
+export function resolveScheduleStartDate(
+  run: { request_snapshot?: { current_date?: string } },
+  plan: { current_date?: string; setup?: { current_date?: string } }
+): string {
+  return (
+    run.request_snapshot?.current_date ??
+    plan.current_date ??
+    plan.setup?.current_date ??
+    "2026-01-01"
+  )
+}
+
+export function formatRunDate(value: string | Date | undefined): string {
+  if (!value) return "No date"
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return "No date"
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date)
+}
+
 function normalizeSearchValue(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase()
 }

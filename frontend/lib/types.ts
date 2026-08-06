@@ -113,6 +113,7 @@ export interface PlanRun {
   mode?: "fresh" | "resume"
   created_at?: string
   result?: ScheduleResponse  // legacy localStorage shape
+  request_snapshot?: { current_date?: string }
 }
 
 export interface Plan {

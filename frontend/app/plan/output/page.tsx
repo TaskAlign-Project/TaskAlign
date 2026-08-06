@@ -59,6 +59,8 @@ import {
   downloadCSV,
   assignmentsToCSV,
   filterAssignmentsBySearch,
+  resolveScheduleStartDate,
+  formatRunDate,
 } from "@/lib/schedule-utils"
 import { formatDayAsDate } from "@/lib/gantt"
 
@@ -253,7 +255,7 @@ function OutputContent({
     unmet: currentRun.unmet ?? {},
     score: currentRun.score ?? 0,
   }
-  const startDate = currentRun.request_snapshot?.current_date ?? plan.setup?.current_date ?? "2026-01-01"
+  const startDate = resolveScheduleStartDate(currentRun, plan)
   const [filterDayStart, setFilterDayStart] = useState("all")
   const [filterDayEnd, setFilterDayEnd] = useState("all")
   const [filterMachine, setFilterMachine] = useState("all")
@@ -378,16 +380,14 @@ function OutputContent({
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-muted-foreground" />
             <Select value={selectedRunId ?? ""} onValueChange={onRunChange}>
-              <SelectTrigger className="w-[180px] h-8">
+              <SelectTrigger className="w-[230px] h-9 font-medium tabular-nums [&>span]:line-clamp-none [&>span]:whitespace-nowrap">
                 <SelectValue placeholder="Select run" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="min-w-[230px] tabular-nums">
                   {sortedRuns.map((run, idx) => (
                   <SelectItem key={run.id} value={run.id}>
-                    Run #{sortedRuns.length - idx} -{" "}
-                    {run.run_at
-                      ? new Date(run.run_at).toLocaleDateString()
-                      : "No date"}
+                    Run #{sortedRuns.length - idx} ·{" "}
+                    {formatRunDate(run.run_at)}
                   </SelectItem>
                 ))}
 

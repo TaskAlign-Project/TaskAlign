@@ -107,7 +107,8 @@ export default function PlanPage() {
     const next = { ...form, [field]: value }
     setForm(next)
     try {
-      await plansApi.update(plan.id, { [field]: value })
+      const updatedPlan = await plansApi.update(plan.id, { [field]: value })
+      setPlan(updatedPlan)
     } catch {
       toast.error("Failed to save setting")
     }
@@ -146,6 +147,20 @@ export default function PlanPage() {
     }
 
     try {
+      // Persist the complete setup before starting the scheduler. This avoids
+      // a race when Run is clicked immediately after changing a field.
+      const updatedPlan = await plansApi.update(targetPlanId, {
+        current_date: form.current_date,
+        start_time: form.start_time,
+        month_days: form.month_days,
+        mold_change_time_minutes: form.mold_change_time_minutes,
+        color_change_time_minutes: form.color_change_time_minutes,
+        pop_size: form.pop_size,
+        n_generations: form.n_generations,
+        mutation_rate: form.mutation_rate,
+      })
+      if (targetPlanId === plan.id) setPlan(updatedPlan)
+
       // Single call — backend runs GA and saves the run
       const savedRun = await runsApi.run(targetPlanId)
 

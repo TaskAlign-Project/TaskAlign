@@ -40,11 +40,11 @@ import { cn } from "@/lib/utils"
 import type { Assignment, Plan, PlanRun, PlanMachine, Component } from "@/lib/types"
 import {
   getActivePlan,
-  getCurrentRun,
   setCurrentRun,
   addDemoRunToActivePlan,
   getPlanById,
 } from "@/lib/storage"
+import { componentsApi, machinesApi, plansApi, runsApi } from "@/lib/api"
 import {
   computeTimeRange,
   generateDayColumns,
@@ -53,7 +53,11 @@ import {
   toAbsoluteHour,
   type GanttTimeRange,
 } from "@/lib/gantt"
-import { filterAssignmentsBySearch } from "@/lib/schedule-utils"
+import {
+  filterAssignmentsBySearch,
+  resolveScheduleStartDate,
+  formatRunDate,
+} from "@/lib/schedule-utils"
 
 // ---- Constants ----
 const ROW_HEIGHT = 52
@@ -145,74 +149,72 @@ export default function AdjustPage() {
 
   useEffect(() => {
     const activePlan = getActivePlan()
-    setPlan(activePlan)
-
-    if (activePlan) {
-      const baseUrl = "http://localhost:8000" // ???
-
-      // Fetch machines
-      fetch(`${baseUrl}/api/v1/machines`)
-        .then((res) => res.json())
-        .then((data: any[]) => {
-          // DB returns { id, code, name, group, status, ... }
-          // Normalize to PlanMachine shape (id = code)
-          setMachines(data.map(m => ({
-            id: m.code ?? m.id,
-            code: m.code ?? m.id,  // ✅ เพิ่ม code
-            name: m.name,
-            group: m.group,
-            tonnage: m.tonnage,
-            hours_per_day: m.hours_per_day,
-            efficiency: m.efficiency,
-            status: m.status,
-          })))
-        })
-        .catch((err) => console.error("Failed to fetch machines:", err))
-
-      // เพิ่ม fetch components
-      fetch(`${baseUrl}/api/v1/plans/${activePlan.id}/components`)
-        .then((res) => res.json())
-        .then((data: Component[]) => setComponents(data))
-        .catch((err) => console.error("Failed to fetch components:", err))
-
-      // Fetch runs
-      fetch(`${baseUrl}/api/v1/plans/${activePlan.id}/runs`)
-        .then((res) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          return res.json()
-        })
-        .then((runs: any[]) => {
-          if (runs && runs.length > 0) {
-            const latestRun = runs[0]
-            const normalizedRun = {
-              ...latestRun,
-              assignments: (latestRun.assignments ?? []).map(normalizeAssignment),
-            }
-            setCurrentRunState(normalizedRun)
-            setSelectedRunId(latestRun.id)
-            setPlan((prev) => prev ? { ...prev, runs } : prev)
-          }
-        })
-        .catch((err) => console.error("Failed to fetch runs:", err))
-        .finally(() => setLoaded(true))
-    } else {
+    if (!activePlan) {
       setLoaded(true)
+      return
+    }
+
+    let cancelled = false
+
+    async function load() {
+      try {
+        const [freshPlan, fetchedMachines, fetchedComponents, fetchedRuns] =
+          await Promise.all([
+            plansApi.get(activePlan.id),
+            machinesApi.list(),
+            componentsApi.list(activePlan.id),
+            runsApi.list(activePlan.id),
+          ])
+
+        if (cancelled) return
+
+        const normalizedRuns = fetchedRuns.map((run) => ({
+          ...run,
+          assignments: (run.assignments ?? []).map(normalizeAssignment),
+        }))
+
+        setPlan({ ...freshPlan, runs: normalizedRuns })
+        setMachines(
+          fetchedMachines.map((machine) => ({
+            ...machine,
+            id: machine.code ?? machine.id,
+            code: machine.code ?? machine.id,
+            status: machine.status ?? "available",
+          }))
+        )
+        setComponents(fetchedComponents)
+
+        const latestRun = normalizedRuns[0]
+        if (latestRun) {
+          setCurrentRunState(latestRun)
+          setSelectedRunId(latestRun.id)
+          setCurrentRun(activePlan.id, latestRun.id)
+        }
+      } catch (error) {
+        console.error("Failed to load adjust plan:", error)
+        toast.error("Failed to load the latest plan data")
+      } finally {
+        if (!cancelled) setLoaded(true)
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
     }
   }, [])
 
   async function handleRunChange(runId: string) {
     if (!plan) return
-    const baseUrl = "http://localhost:8000"
     try {
-      const res = await fetch(`${baseUrl}/api/v1/runs/${runId}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const run = await res.json()
+      const run = await runsApi.get(runId)
       const normalizedRun = {
         ...run,
         assignments: (run.assignments ?? []).map(normalizeAssignment),
       }
       setCurrentRunState(normalizedRun)
       setSelectedRunId(runId)
+      setCurrentRun(plan.id, runId)
       toast.success("Switched to selected run")
     } catch {
       toast.error("Failed to load run")
@@ -315,11 +317,7 @@ function AdjustContent({
   machines: PlanMachine[]   // ← add
   components: Component[]
 }) {
-  const startDate =
-    currentRun.request_snapshot?.current_date ??
-    (plan as any).current_date ??               // DB plan has current_date at top level
-    plan.setup?.current_date ??
-    "2026-01-01"
+  const startDate = resolveScheduleStartDate(currentRun, plan)
   
   const originalAssignments = useMemo(
     () => (currentRun as any).assignments ?? [],
@@ -643,10 +641,10 @@ function AdjustContent({
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-muted-foreground" />
             <Select value={selectedRunId ?? ""} onValueChange={onRunChange}>
-              <SelectTrigger className="w-[180px] h-8">
+              <SelectTrigger className="w-[230px] h-9 font-medium tabular-nums [&>span]:line-clamp-none [&>span]:whitespace-nowrap">
                 <SelectValue placeholder="Select run" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="min-w-[230px] tabular-nums">
                 {/* {(plan.runs ?? [])
                   .filter((run) => run.id && run.id.trim() !== "")
                   .map((run, idx) => (
@@ -663,10 +661,8 @@ function AdjustContent({
                       )
                     return sortedRuns.map((run, idx) => (
                       <SelectItem key={run.id} value={run.id}>
-                        Run #{sortedRuns.length - idx} -{" "}
-                        {run.run_at ?? run.created_at
-                          ? new Date(run.run_at ?? run.created_at).toLocaleDateString()
-                          : "No date"}
+                        Run #{sortedRuns.length - idx} ·{" "}
+                        {formatRunDate(run.run_at ?? run.created_at)}
                       </SelectItem>
                     ))
                   })()}
