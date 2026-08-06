@@ -53,6 +53,7 @@ import {
   toAbsoluteHour,
   type GanttTimeRange,
 } from "@/lib/gantt"
+import { filterAssignmentsBySearch } from "@/lib/schedule-utils"
 
 // ---- Constants ----
 const ROW_HEIGHT = 52
@@ -406,15 +407,7 @@ function AdjustContent({
       arr = arr.filter((a) => machineGroupMap.get(a.machine_id) === filterMachineGroup)
     }
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      arr = arr.filter(
-        (a) =>
-          (a.component_id ?? "").toLowerCase().includes(q) ||
-          (a.component_name ?? "").toLowerCase().includes(q) ||
-          (a.mold_id ?? "").toLowerCase().includes(q) ||
-          a.machine_name.toLowerCase().includes(q) ||
-          a.machine_id.toLowerCase().includes(q)
-      )
+      arr = filterAssignmentsBySearch(arr, searchQuery)
     }
     return arr.sort(
       (a, b) => a.day - b.day || a.machine_id.localeCompare(b.machine_id) || a.start_hour_clock - b.start_hour_clock
@@ -795,9 +788,6 @@ function AdjustContent({
               ))}
             </div>
           </div>
-          <p className="text-xs text-muted-foreground pb-1">
-            {filtered.length} of {assignments.length} assignments
-          </p>
         </div>
 
         {/* Main content: Gantt + Inspector */}

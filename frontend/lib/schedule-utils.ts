@@ -18,6 +18,76 @@ export function storeResult(data: ScheduleResponse): void {
   localStorage.setItem(SCHEDULE_RESULT_KEY, JSON.stringify(data))
 }
 
+function normalizeSearchValue(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase()
+}
+
+/**
+ * Filter timeline assignments while prioritizing exact domain identifiers.
+ * For example, searching for C1 must not also return C10 or C11.
+ */
+export function filterAssignmentsBySearch<T extends Assignment>(
+  assignments: T[],
+  query: string
+): T[] {
+  const q = normalizeSearchValue(query)
+  if (!q) return assignments
+
+  const exactComponentIds = new Set(
+    assignments
+      .filter(
+        (a) =>
+          normalizeSearchValue(a.component_id) === q ||
+          normalizeSearchValue(a.component_name) === q
+      )
+      .map((a) => normalizeSearchValue(a.component_id))
+      .filter(Boolean)
+  )
+  if (exactComponentIds.size > 0) {
+    return assignments.filter((a) =>
+      exactComponentIds.has(normalizeSearchValue(a.component_id))
+    )
+  }
+
+  const hasExactMold = assignments.some((a) =>
+    [a.mold_id, a.from_mold_id, a.to_mold_id].some(
+      (value) => normalizeSearchValue(value) === q
+    )
+  )
+  if (hasExactMold) {
+    return assignments.filter((a) =>
+      [a.mold_id, a.from_mold_id, a.to_mold_id].some(
+        (value) => normalizeSearchValue(value) === q
+      )
+    )
+  }
+
+  const hasExactMachine = assignments.some(
+    (a) =>
+      normalizeSearchValue(a.machine_id) === q ||
+      normalizeSearchValue(a.machine_name) === q
+  )
+  if (hasExactMachine) {
+    return assignments.filter(
+      (a) =>
+        normalizeSearchValue(a.machine_id) === q ||
+        normalizeSearchValue(a.machine_name) === q
+    )
+  }
+
+  return assignments.filter((a) =>
+    [
+      a.component_id,
+      a.component_name,
+      a.mold_id,
+      a.from_mold_id,
+      a.to_mold_id,
+      a.machine_id,
+      a.machine_name,
+    ].some((value) => normalizeSearchValue(value).includes(q))
+  )
+}
+
 // ---- Grouping helpers ----
 export type MachineDay = { machineId: string; machineName: string; day: number; tasks: Assignment[] }
 

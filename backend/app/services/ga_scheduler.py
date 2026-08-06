@@ -298,7 +298,12 @@ def _decode_v2(
         finished = int(getattr(c, "finished", 0) or 0)
         remaining[c.id] = max(int(c.quantity) - finished, 0)
 
-    completion_time: Dict[str, Tuple[int, float]] = {}
+    # Components completed before this planning horizon are already valid
+    # prerequisites.  Without seeding their completion time, a dependent
+    # component in wait_all mode can never become a scheduling candidate.
+    completion_time: Dict[str, Tuple[int, float]] = {
+        c.id: (1, 0.0) for c in components if remaining[c.id] <= 0
+    }
 
     mold_busy: Dict[int, Dict[str, List[Tuple[float, float]]]] = {
         d: {m.id: [] for m in molds} for d in range(1, month_days + 1)

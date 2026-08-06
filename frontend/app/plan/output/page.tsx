@@ -58,6 +58,7 @@ import {
   computeDailySummaries,
   downloadCSV,
   assignmentsToCSV,
+  filterAssignmentsBySearch,
 } from "@/lib/schedule-utils"
 import { formatDayAsDate } from "@/lib/gantt"
 
@@ -326,15 +327,7 @@ function OutputContent({
     arr = arr.filter((a) => activeTypes.has(a.task_type))
     // Search
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      arr = arr.filter(
-        (a) =>
-          (a.component_id ?? "").toLowerCase().includes(q) ||
-          (a.component_name ?? "").toLowerCase().includes(q) ||
-          (a.mold_id ?? "").toLowerCase().includes(q) ||
-          a.machine_name.toLowerCase().includes(q) ||
-          a.machine_id.toLowerCase().includes(q)
-      )
+      arr = filterAssignmentsBySearch(arr, searchQuery)
     }
     // Sort by day, then machine, then start hour
     arr = [...arr].sort(
@@ -587,9 +580,6 @@ function OutputContent({
               />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground pb-1">
-            {filtered.length} of {data.assignments.length} assignments
-          </p>
         </div>
 
         {/* Tabs */}
