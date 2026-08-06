@@ -39,6 +39,7 @@ import { componentsApi, moldsApi, plansApi } from "@/lib/api"
 import type { Component, Mold, Plan } from "@/lib/types"
 import { toast } from "sonner"
 import { getActivePlanId } from "@/lib/storage"
+import { resolveMoldName } from "@/lib/mold-utils"
 
 export default function ComponentsPage() {
   const [plan, setPlan] = useState<Plan | null>(null)
@@ -294,7 +295,9 @@ export default function ComponentsPage() {
                       <TableCell className="text-right">{c.quantity.toLocaleString()}</TableCell>
                       <TableCell className="text-right">{(c.finished ?? 0).toLocaleString()}</TableCell>
                       <TableCell className="text-right">{c.cycle_time_sec}</TableCell>
-                      <TableCell className="font-mono text-sm">{c.mold_id}</TableCell>
+                      <TableCell className="text-sm">
+                        {resolveMoldName(c.mold_id, molds)}
+                      </TableCell>
                       <TableCell>{c.color}</TableCell>
                       <TableCell className="text-xs">
                         {c.start_date ? new Date(c.start_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "-"}

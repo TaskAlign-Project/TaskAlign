@@ -204,7 +204,11 @@ export function parseMoldsFromExcel(file: File): Promise<ImportResult<Mold>> {
             return
           }
           
-          const name = String(normalizedRow.name ?? id).trim()
+          const name = String(normalizedRow.name ?? "").trim()
+          if (!name) {
+            errors.push(`Row ${rowNum}: Missing required field "name"`)
+            return
+          }
           const group = parseGroup(normalizedRow.group)
           const tonnage = Number(normalizedRow.tonnage) || 0
           const component_id = String(normalizedRow.component_id ?? normalizedRow.componentid ?? normalizedRow.component ?? "").trim()
@@ -214,7 +218,8 @@ export function parseMoldsFromExcel(file: File): Promise<ImportResult<Mold>> {
           }
           
           molds.push({
-            id,
+            id: name,
+            code: name,
             name,
             group,
             tonnage,
@@ -353,8 +358,8 @@ export function generateTemplate(type: ImportType): void {
       break
     case "molds":
       ws = XLSX.utils.json_to_sheet([
-        { id: "MLD1", name: "Mold 1", group: "small", tonnage: 60, component_id: "C1" },
-        { id: "MLD2", name: "Mold 2", group: "medium", tonnage: 150, component_id: "C2" },
+        { id: "M01", name: "Mold Small A", group: "small", tonnage: 60, component_id: "C1" },
+        { id: "M02", name: "Mold Medium A", group: "medium", tonnage: 150, component_id: "C2" },
       ])
       filename = "molds_template.xlsx"
       break

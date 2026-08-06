@@ -51,15 +51,19 @@ export function MoldFormDialog({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    setForm(mold ? { ...mold, component_id: mold.component_id ?? "" } : EMPTY)
+    setForm(
+      mold
+        ? { ...mold, component_id: mold.component_id ?? "" }
+        : EMPTY
+    )
     setErrors({})
   }, [mold, open])
 
   function validate(): boolean {
     const e: Record<string, string> = {}
-    if (!form.code.trim()) e.code = "Code is required"
-    else if (!isEdit && existingIds.includes(form.code.trim()))
-      e.code = "Code already exists"
+    if (!form.name.trim()) e.name = "Name is required"
+    else if (!isEdit && existingIds.includes(form.name.trim()))
+      e.name = "Name already exists"
     if (form.tonnage <= 0) e.tonnage = "Tonnage must be > 0"
     setErrors(e)
     return Object.keys(e).length === 0
@@ -68,7 +72,8 @@ export function MoldFormDialog({
   function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault()
     if (!validate()) return
-    onSave({ ...form, code: form.code.trim(), name: form.name.trim() })
+    const name = form.name.trim()
+    onSave({ ...form, code: name, name })
     onOpenChange(false)
   }
 
@@ -83,26 +88,21 @@ export function MoldFormDialog({
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="mold-code">Code</Label>
-            <Input
-              id="mold-code"
-              value={form.code}
-              disabled={isEdit}
-              onChange={(e) => setForm({ ...form, code: e.target.value })}
-              placeholder="e.g. MLD-001"
-            />
-            {errors.code && (
-              <p className="text-xs text-destructive">{errors.code}</p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
             <Label htmlFor="mold-name">Name</Label>
             <Input
               id="mold-name"
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, code: e.target.value, name: e.target.value })
+              }
+              placeholder="e.g. Mold Small A"
             />
+            {errors.name && (
+              <p className="text-xs text-destructive">{errors.name}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              The name is also used as the mold ID.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">

@@ -23,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import type { Component, Mold, DependencyMode } from "@/lib/types"
+import { resolveMoldName } from "@/lib/mold-utils"
 
 interface Props {
   open: boolean
@@ -70,6 +71,7 @@ export function ComponentFormDialog({
       setForm({
         ...component,
         component_id: component.component_id ?? "",
+        mold_id: resolveMoldName(component.mold_id, molds),
         start_date: component.start_date ?? new Date().toISOString().split("T")[0],
         due_date: component.due_date ?? new Date().toISOString().split("T")[0],
         dependency_mode: component.dependency_mode ?? "wait",
@@ -80,7 +82,7 @@ export function ComponentFormDialog({
       setForm(EMPTY)
     }
     setErrors({})
-  }, [component, open])
+  }, [component, molds, open])
 
   // Available prerequisites: all components except self
   const availablePrereqs = allComponents.filter((c) => c.component_id !== form.component_id)
@@ -235,8 +237,8 @@ export function ComponentFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {molds.map((m) => (
-                    <SelectItem key={m.id} value={m.code}>
-                      {m.code} - {m.name}
+                    <SelectItem key={m.id} value={m.name}>
+                      {m.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

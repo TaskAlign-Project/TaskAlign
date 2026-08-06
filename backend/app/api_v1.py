@@ -5,6 +5,11 @@ from app.database import get_db
 from app.models import db_models
 from app import schemas
 from app.services.check_scheduler import run_all_rule_checks, check_unmet
+from app.services.mold_names import (
+    build_mold_aliases,
+    mold_identifier,
+    normalize_mold_payload,
+)
 from sqlalchemy import func
 from datetime import datetime, date, time
 from pydantic import BaseModel as PydanticBase
@@ -146,27 +151,32 @@ def import_molds(
     for row in ws.iter_rows(min_row=2, values_only=True):
         data = dict(zip(headers, row))
         
-        # Accept 'id' or 'code' from Excel
-        code = data.get("id") or data.get("code")
-        if not code or str(code).lower() == "none":
+        # The human mold name is the canonical scheduler identifier.
+        source_code = data.get("id") or data.get("code")
+        name = data.get("name")
+        if not name or str(name).strip().lower() == "none":
             continue
-            
-        code = str(code).strip()
 
-        existing = db.query(db_models.Mold).filter(db_models.Mold.code == code).first()
+        mold_data = normalize_mold_payload({
+            "code": source_code or name,
+            "name": name,
+            "group": str(data.get("group", "medium")).strip(),
+            "tonnage": int(data.get("tonnage", 0)),
+            "component_id": str(data.get("component_id")).strip() if data.get("component_id") else None,
+        })
+        identifier = mold_data["name"]
+
+        existing = db.query(db_models.Mold).filter(
+            (db_models.Mold.code == mold_data["code"])
+            | (db_models.Mold.name == identifier)
+        ).first()
         if existing:
-            skipped.append(code)
+            skipped.append(identifier)
             continue
 
-        db_mold = db_models.Mold(
-            code=code,
-            name=str(data.get("name") or code),
-            group=str(data.get("group", "medium")).strip(),
-            tonnage=int(data.get("tonnage", 0)),
-            component_id=str(data.get("component_id")).strip() if data.get("component_id") else None,
-        )
+        db_mold = db_models.Mold(**mold_data)
         db.add(db_mold)
-        created.append(code)
+        created.append(identifier)
 
     db.commit()
     return {"created": len(created), "skipped": len(skipped), "codes": created}
@@ -196,6 +206,7 @@ def import_components(
 
     created = []
     skipped = []
+    mold_aliases = build_mold_aliases(db.query(db_models.Mold).all())
 
     for row in ws.iter_rows(min_row=2, values_only=True):
         data = dict(zip(headers, row))
@@ -237,6 +248,7 @@ def import_components(
         else:
             prerequisites = [p.strip() for p in str(raw_prereq).split(",") if p.strip()]
 
+        source_mold_id = str(data.get("mold_id", "")).strip()
         db_component = db_models.Component(
             plan_id=plan_id,
             component_id=comp_id,
@@ -245,7 +257,7 @@ def import_components(
             quantity=int(data.get("quantity", 0)),
             finished=int(data.get("finished", 0)),
             cycle_time_sec=float(data.get("cycle_time_sec", 0)),
-            mold_id=str(data.get("mold_id", "")).strip(),
+            mold_id=mold_aliases.get(source_mold_id, source_mold_id),
             color=str(data.get("color", "")).strip(),
             start_date=str(data.get("start_date")).strip() if data.get("start_date") else None,
             due_date=str(data.get("due_date", "")).strip(),
@@ -371,7 +383,10 @@ def get_molds(db: Session = Depends(get_db)):
 
 @router.post("/molds", response_model=schemas.Mold)
 def create_mold(mold: schemas.MoldCreate, db: Session = Depends(get_db)):
-    db_mold = db_models.Mold(**mold.model_dump())
+    mold_data = normalize_mold_payload(mold.model_dump())
+    if db.query(db_models.Mold).filter(db_models.Mold.name == mold_data["name"]).first():
+        raise HTTPException(status_code=400, detail="Mold name must be unique")
+    db_mold = db_models.Mold(**mold_data)
     db.add(db_mold)
     db.commit()
     db.refresh(db_mold)
@@ -391,8 +406,20 @@ def update_mold(mold_id: str, mold: schemas.MoldCreate, db: Session = Depends(ge
     db_mold = db.query(db_models.Mold).filter(db_models.Mold.id == mold_id).first()
     if not db_mold:
         raise HTTPException(status_code=404, detail="Mold not found")
-    for key, value in mold.model_dump().items():
+    old_code = db_mold.code
+    old_name = db_mold.name
+    mold_data = normalize_mold_payload(mold.model_dump())
+    duplicate = db.query(db_models.Mold).filter(
+        db_models.Mold.name == mold_data["name"],
+        db_models.Mold.id != mold_id,
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="Mold name must be unique")
+    for key, value in mold_data.items():
         setattr(db_mold, key, value)
+    db.query(db_models.Component).filter(
+        db_models.Component.mold_id.in_([old_code, old_name])
+    ).update({"mold_id": mold_data["name"]}, synchronize_session=False)
     db.commit()
     db.refresh(db_mold)
     return db_mold
@@ -405,7 +432,12 @@ def get_components(plan_id: str, db: Session = Depends(get_db)):
 
 @router.post("/plans/{plan_id}/components", response_model=schemas.Component)
 def create_component(plan_id: str, component: schemas.ComponentCreate, db: Session = Depends(get_db)):
-    db_component = db_models.Component(**component.model_dump(), plan_id=plan_id)
+    component_data = component.model_dump()
+    mold_aliases = build_mold_aliases(db.query(db_models.Mold).all())
+    component_data["mold_id"] = mold_aliases.get(
+        component_data["mold_id"], component_data["mold_id"]
+    )
+    db_component = db_models.Component(**component_data, plan_id=plan_id)
     db.add(db_component)
     db.commit()
     db.refresh(db_component)
@@ -425,7 +457,12 @@ def update_component(component_id: str, component: schemas.ComponentCreate, db: 
     db_component = db.query(db_models.Component).filter(db_models.Component.id == component_id).first()
     if not db_component:
         raise HTTPException(status_code=404, detail="Component not found")
-    for key, value in component.model_dump().items():
+    component_data = component.model_dump()
+    mold_aliases = build_mold_aliases(db.query(db_models.Mold).all())
+    component_data["mold_id"] = mold_aliases.get(
+        component_data["mold_id"], component_data["mold_id"]
+    )
+    for key, value in component_data.items():
         setattr(db_component, key, value)
     db.commit()
     db.refresh(db_component)
@@ -467,10 +504,12 @@ def run_plan(plan_id: str, db: Session = Depends(get_db)):
         ) for m in db_machines
     ]
 
+    mold_id_aliases = build_mold_aliases(db_molds)
+
     ga_molds = [
         GAMold(
-            id=m.code,
-            name=m.name or m.code,
+            id=mold_identifier({"code": m.code, "name": m.name}),
+            name=mold_identifier({"code": m.code, "name": m.name}),
             group=m.group,
             tonnage=m.tonnage,
             component_id=m.component_id
@@ -484,7 +523,7 @@ def run_plan(plan_id: str, db: Session = Depends(get_db)):
             quantity=c.quantity,
             finished=c.finished,
             cycle_time_sec=c.cycle_time_sec,
-            mold_id=c.mold_id,
+            mold_id=mold_id_aliases.get(c.mold_id, c.mold_id),
             color=c.color,
             start_date=parse_date(c.start_date),                                          # ← fixed
             due_date=parse_date(c.due_date) or date.fromisoformat(db_plan.current_date),  # ← fixed
@@ -612,6 +651,3 @@ def check_schedule(plan_id: str, body: CheckScheduleRequest, db: Session = Depen
        violations=violations,
        unmet_details=unmet_details,
    )
-
-
-

@@ -73,11 +73,12 @@ async function loadMolds() {
   //  Create / Update
   async function handleSave(m: Mold) {
     try {
+      const canonicalMold = { ...m, code: m.code || m.name, name: m.name }
       if (editing) {
-        await moldsApi.update(m.id, { ...m })
+        await moldsApi.update(m.id, canonicalMold)
         toast.success(`Mold "${m.name}" updated`)
       } else {
-        await moldsApi.create(m)
+        await moldsApi.create(canonicalMold)
         toast.success(`Mold "${m.name}" created`)
       }
       setEditing(null)
@@ -114,7 +115,6 @@ async function handleImport(_data: Mold[], _mode: "replace" | "append") {
       result = result.filter(
         (m) =>
           // Search by code (e.g. MLD1) or name (e.g. Mold 1)
-          m.code.toLowerCase().includes(q) ||
           m.name.toLowerCase().includes(q)
       )
     }
@@ -222,7 +222,7 @@ async function handleImport(_data: Mold[], _mode: "replace" | "append") {
               ) : (
                 filteredMolds.map((m) => (
                   <TableRow key={m.id}>
-                    <TableCell className="font-mono text-sm">{m.code}</TableCell>
+                    <TableCell className="font-mono text-sm">{m.name}</TableCell>
                     <TableCell className="font-medium">{m.name}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="capitalize">{m.group}</Badge>
@@ -267,7 +267,7 @@ async function handleImport(_data: Mold[], _mode: "replace" | "append") {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         mold={editing}
-        existingIds={molds.map((m) => m.id)}
+        existingIds={molds.map((m) => m.name)}
         allComponents={components}
         onSave={handleSave}
       />
