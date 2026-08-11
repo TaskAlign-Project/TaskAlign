@@ -10,3 +10,5 @@ python-dotenv==1.0.0
 # For Excel Import
 openpyxl
 python-multipart
+
+pytest

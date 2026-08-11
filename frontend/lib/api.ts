@@ -148,6 +148,61 @@ export const componentsApi = {
 export const runsApi = {
   list: (planId: string) => apiFetch<PlanRun[]>(`/plans/${planId}/runs`),
   get: (runId: string) => apiFetch<PlanRun>(`/runs/${runId}`),
-  // Triggers GA on backend, returns the saved Run
   run: (planId: string) => apiFetch<PlanRun>(`/plans/${planId}/run`, { method: "POST" }),
+  exportUrl: (planId: string, runId: string) =>
+    `${API_V1}/plans/${planId}/runs/${runId}/export.xlsx`,
+}
+
+export interface ClientImportResult {
+  dry_run: boolean
+  molds: { created: number; updated: number }
+  components: { created: number; skipped: number; deleted: number }
+  errors: string[]
+  warnings: string[]
+  stats: Record<string, any>
+}
+
+export const clientImportApi = {
+  importClientFormat: async ({
+    planId,
+    overview,
+    zppi,
+    mode = "replace",
+    skipCompleted = false,
+    dryRun = false,
+  }: {
+    planId: string
+    overview: File
+    zppi: File
+    mode?: "append" | "replace"
+    skipCompleted?: boolean
+    dryRun?: boolean
+  }): Promise<ClientImportResult> => {
+    const formData = new FormData()
+    formData.append("overview", overview)
+    formData.append("zppi", zppi)
+
+    const query = new URLSearchParams({
+      mode,
+      skip_completed: String(skipCompleted),
+      dry_run: String(dryRun),
+    })
+
+    const res = await fetch(
+      `${API_V1}/plans/${planId}/components/import-client-format?${query}`,
+      { method: "POST", body: formData }
+    )
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      const detail = body?.detail
+      if (detail && typeof detail === "object" && Array.isArray(detail.errors)) {
+        throw new Error(detail.errors.join("\n"))
+      }
+      throw new Error(
+        typeof detail === "string" ? detail : `Import failed: ${res.status}`
+      )
+    }
+    return res.json()
+  },
 }

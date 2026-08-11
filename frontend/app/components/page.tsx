@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ExcelImportDialog } from "@/components/excel-import-dialog"
+import { ClientImportDialog } from "@/components/client-import-dialog"
 import {
   Select,
   SelectContent,
@@ -136,11 +136,6 @@ export default function ComponentsPage() {
     } catch {
       toast.error("Failed to delete component")
     }
-  }
-
-  // Import
-  async function handleImport(_data: Component[], _mode: "replace" | "append") {
-    await loadData()
   }
 
   const filteredComponents = useMemo(() => {
@@ -362,12 +357,11 @@ export default function ComponentsPage() {
         onSave={handleSave}
       />
 
-      <ExcelImportDialog<Component>
+      <ClientImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
-        type="components"
         planId={planId}
-        onImport={handleImport}
+        onImported={loadData}
       />
 
       <AlertDialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>

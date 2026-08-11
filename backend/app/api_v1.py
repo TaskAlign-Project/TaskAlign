@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import db_models
 from app import schemas
 from app.services.check_scheduler import run_all_rule_checks, check_unmet
+from app.services.client_import import run_client_import
 from app.services.mold_names import (
     build_mold_aliases,
     mold_identifier,
@@ -13,6 +14,8 @@ from app.services.mold_names import (
 from sqlalchemy import func
 from datetime import datetime, date, time
 from pydantic import BaseModel as PydanticBase
+from fastapi.responses import StreamingResponse
+from app.services.schedule_export import export_schedule_xlsx, suggested_filename
 import openpyxl
 import io
 import uuid
@@ -651,3 +654,99 @@ def check_schedule(plan_id: str, body: CheckScheduleRequest, db: Session = Depen
        violations=violations,
        unmet_details=unmet_details,
    )
+
+
+@router.post("/plans/{plan_id}/components/import-client-format")
+def import_client_format(
+    plan_id: str,
+    overview: UploadFile = File(..., description="Overview_Lastest.xlsx"),
+    zppi: UploadFile = File(..., description="ZPPI010_Lastest.xlsx"),
+    mode: str = Query("append", pattern="^(append|replace)$"),
+    skip_completed: bool = Query(
+        False,
+        description="Drop orders whose Produced Q'ty already meets Planned Q'ty.",
+    ),
+    dry_run: bool = Query(
+        False,
+        description="Parse and validate only; report counts without writing.",
+    ),
+    db: Session = Depends(get_db),
+):
+
+    try:
+        overview_bytes = overview.file.read()
+        zppi_bytes = zppi.file.read()
+    finally:
+        overview.file.close()
+        zppi.file.close()
+ 
+    if not overview_bytes or not zppi_bytes:
+        raise HTTPException(status_code=400, detail="Both files are required and must not be empty.")
+ 
+    outcome = run_client_import(
+        db=db,
+        plan_id=plan_id,
+        overview_bytes=overview_bytes,
+        zppi_bytes=zppi_bytes,
+        mode=mode,
+        skip_completed=skip_completed,
+        dry_run=dry_run,
+    )
+ 
+    result = outcome.as_dict()
+ 
+    if result["errors"]:
+        if any("not found" in e for e in result["errors"]):
+            raise HTTPException(status_code=404, detail=result["errors"][0])
+        raise HTTPException(status_code=422, detail=result)
+ 
+    return result
+
+
+@router.get("/plans/{plan_id}/runs/{run_id}/export.xlsx")
+def export_run_xlsx(
+    plan_id: str,
+    run_id: str,
+    revision: str = Query("0", description="Revision number shown in the title block."),
+    db: Session = Depends(get_db),
+):
+    """Download a completed run as the client's daily production-plan workbook.
+    """
+    plan = db.query(db_models.Plan).filter(db_models.Plan.id == plan_id).first()
+    if plan is None:
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
+ 
+    run = (
+        db.query(db_models.Run)
+        .filter(db_models.Run.id == run_id, db_models.Run.plan_id == plan_id)
+        .first()
+    )
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found for this plan")
+    if not run.assignments:
+        raise HTTPException(
+            status_code=409,
+            detail="This run has no assignments to export (it may have failed).",
+        )
+ 
+    # Ordered by insertion so "Item" numbering matches the components page.
+    components = (
+        db.query(db_models.Component)
+        .filter(db_models.Component.plan_id == plan_id)
+        .all()
+    )
+ 
+    content = export_schedule_xlsx(
+        plan=plan,
+        assignments=run.assignments,
+        components=components,
+        run=run,
+        revision=revision,
+    )
+    filename = suggested_filename(plan, run)
+ 
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

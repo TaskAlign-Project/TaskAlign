@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ExcelImportDialog } from "@/components/excel-import-dialog"
+// import { ExcelImportDialog } from "@/components/excel-import-dialog"
+import { ClientImportDialog } from "@/components/client-import-dialog"
+import { getActivePlanId } from "@/lib/storage"
 import {
   Select,
   SelectContent,
@@ -36,7 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { MoldFormDialog } from "@/components/mold-form-dialog"
-import { moldsApi, componentsApi } from "@/lib/api"
+import { moldsApi } from "@/lib/api"
 import type { Mold, Component } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -51,6 +53,7 @@ export default function MoldsPage() {
 
   const [searchQuery, setSearchQuery] = useState("")
   const [groupFilter, setGroupFilter] = useState<"all" | "small" | "medium" | "large">("all")
+  const [planId, setPlanId] = useState<string | null>(null)
 
   //  Load molds and components from backend
 async function loadMolds() {
@@ -68,6 +71,7 @@ async function loadMolds() {
 
   useEffect(() => {
     loadMolds()
+    setPlanId(getActivePlanId())
   }, [])
 
   //  Create / Update
@@ -206,14 +210,13 @@ async function handleImport(_data: Mold[], _mode: "replace" | "append") {
                 <TableHead>Name</TableHead>
                 <TableHead>Group</TableHead>
                 <TableHead className="text-right">Tonnage</TableHead>
-                <TableHead>Component ID</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredMolds.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     {molds.length === 0
                       ? "No molds yet. Add one to get started."
                       : "No molds match the current filters."}
@@ -228,15 +231,6 @@ async function handleImport(_data: Mold[], _mode: "replace" | "append") {
                       <Badge variant="secondary" className="capitalize">{m.group}</Badge>
                     </TableCell>
                     <TableCell className="text-right">{m.tonnage}</TableCell>
-                    <TableCell>
-                      {m.component_id ? (
-                        <Badge variant="outline" className="text-xs font-mono">
-                          {m.component_id}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">None</span>
-                      )}
-                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button
@@ -272,11 +266,11 @@ async function handleImport(_data: Mold[], _mode: "replace" | "append") {
         onSave={handleSave}
       />
 
-      <ExcelImportDialog<Mold>
+      <ClientImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
-        type="molds"
-        onImport={handleImport}
+        planId={planId}
+        onImported={loadMolds}
       />
 
       <AlertDialog
