@@ -37,14 +37,36 @@ TaskAlign uses heuristic/optimization logic to propose a high-quality draft sche
        - prerequisites (with support for **pre-setup then wait** when prerequisites complete later the same day)
        - per-day capacity using `hours_per_day * efficiency`
        - setup activities (**mold change** and **color change**) as explicit tasks
+   - Each schedule is saved as a named **Plan**, with its own machines, molds, components, and full run history — so a factory can keep several plans (e.g., different months or lines) side by side.
 
-2. **Timeline-Ready Output (Gantt Chart / Excel Friendly)**
+2. **Direct Import From the Client's Existing Reports**
+   - Skips manual re-entry by parsing the factory's own spreadsheets directly:
+     - **Overview** — the assembly/mold master sheet (mold code, machine group, tonnage, cycle time per component).
+     - **ZPPI010** — the SAP production-order export (material, planned/produced quantity, start/due dates).
+   - Supports **append** or **replace** modes, an option to skip orders already fully produced, and a **dry run** to preview counts before committing anything to the plan.
+
+3. **Flexible Scheduling Modes**
+   - **Fresh Start:** builds a schedule from zero for a new planning period.
+   - **Resume:** re-runs the optimizer on top of an existing plan's current inputs, picking up from what's already been produced.
+
+4. **Timeline-Ready Output (Gantt Chart / Excel Friendly)**
    - Produces a detailed per-machine schedule with explicit **start/end times** for each task type:
      - `CHANGE_COLOR`, `CHANGE_MOLD`, `WAIT`, `PRODUCE`
    - Includes production details (component, mold, color, quantity, used hours) suitable for:
-     - Gantt/timeline visualization
+     - Gantt/timeline visualization in the web UI, with manual adjustment support
      - daily workload summaries per machine
-     - exporting to spreadsheets for planner review and manual adjustments
+     - exporting to an Excel workbook laid out like the client's own daily production-plan sheet
+
+5. **Schedule Validation & Unmet-Demand Checks**
+   - Every run is automatically checked against a set of rules before it's trusted:
+     - no overlapping tasks on the same machine
+     - no mold used on two machines at once
+     - correct task sequencing within a day
+     - valid production fields and non-zero task durations
+   - Components that couldn't be fully scheduled within the available capacity are flagged as **unmet demand** rather than silently dropped.
+
+6. **Machine, Mold & Component Management**
+   - Dedicated pages to create, edit, and delete machines, molds, and components outside of the bulk import flow, for day-to-day upkeep between planning runs.
 
 ## Running the Project
 
