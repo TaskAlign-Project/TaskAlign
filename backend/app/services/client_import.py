@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import db_models
@@ -18,6 +19,7 @@ from app.services.overview_import import (
 class ImportOutcome:
     molds_created: int = 0
     molds_updated: int = 0
+    molds_removed: int = 0
     components_created: int = 0
     components_skipped: int = 0
     components_deleted: int = 0
@@ -27,7 +29,11 @@ class ImportOutcome:
     def as_dict(self) -> dict[str, Any]:
         return {
             "dry_run": self.dry_run,
-            "molds": {"created": self.molds_created, "updated": self.molds_updated},
+            "molds": {
+                "created": self.molds_created,
+                "updated": self.molds_updated,
+                "removed": self.molds_removed,
+            },
             "components": {
                 "created": self.components_created,
                 "skipped": self.components_skipped,
@@ -98,11 +104,11 @@ def persist_molds(
 ) -> None:
     """Upsert molds by code.
 
-    Molds are global while components are plan-scoped, so this never deletes:
-    dropping a mold that another plan's components still reference would leave
-    those components unschedulable (`_feasible_on_machine` returns False when
-    the mold lookup misses). Existing molds have group and tonnage refreshed;
-    component_id is left alone so any manual edit survives re-import.
+    Molds are global while components are plan-scoped, so this never deletes a
+    mold here -- dropping one while its own soon-to-be-replaced components are
+    still on the books would look identical to it still being needed. Removing
+    truly-obsolete molds is handled separately, after components are written,
+    by remove_obsolete_molds().
     """
     existing = {m.code: m for m in db.query(db_models.Mold).all()}
 
@@ -132,6 +138,48 @@ def persist_molds(
                     current.name = mold["name"]
                     current.group = mold["group"]
                     current.tonnage = mold["tonnage"]
+
+
+def remove_obsolete_molds(
+    db: Session,
+    obsolete_codes: Sequence[str],
+    outcome: ImportOutcome,
+    dry_run: bool,
+    report: Optional[ImportReport] = None,
+) -> None:
+    """Drop bare mold codes that build_molds() split into per-tonnage variants
+    this run (e.g. "11C202AN" -> "11C202AN-90T" + "11C202AN-160T"), but only if
+    no component anywhere -- in any plan -- still points at the bare code.
+
+    Must run after persist_components() so a plan's own replaced components
+    (deleted earlier in this same import, in "replace" mode) don't count as
+    still using it and block the cleanup.
+    """
+    if not obsolete_codes:
+        return
+    existing = {
+        m.code: m
+        for m in db.query(db_models.Mold).filter(db_models.Mold.code.in_(obsolete_codes)).all()
+    }
+    for code in obsolete_codes:
+        current = existing.get(code)
+        if current is None:
+            continue
+        still_used = (
+            db.query(func.count(db_models.Component.id))
+            .filter(db_models.Component.mold_id == code)
+            .scalar()
+        )
+        if still_used:
+            if report is not None:
+                report.warn(
+                    f"Mold {code}: superseded by its split variants, but {still_used} "
+                    f"existing component(s) still reference it, so it was kept."
+                )
+            continue
+        outcome.molds_removed += 1
+        if not dry_run:
+            db.delete(current)
 
 
 def persist_components(
@@ -208,6 +256,18 @@ def persist_components(
 # --------------------------------------------------------------------------
 
 
+def _readable_db_error(exc: Exception) -> str:
+    """SQLAlchemy wraps driver errors with the full statement and every bound
+    parameter appended, which is unreadable for anything but debugging. The
+    driver's own message (psycopg2's ``pgerror``, e.g. "ERROR: duplicate key
+    ... DETAIL: Key (code)=(X) already exists.") is the human-readable part;
+    strip the "[SQL: ...] [parameters: ...]" tail SQLAlchemy adds on top.
+    """
+    orig = getattr(exc, "orig", None)
+    text = str(getattr(orig, "pgerror", None) or orig or exc).strip()
+    return " ".join(text.splitlines())
+
+
 def run_client_import(
     db: Session,
     plan_id: str,
@@ -226,8 +286,9 @@ def run_client_import(
     if mode not in ("append", "replace"):
         raise ValueError(f"mode must be 'append' or 'replace', got {mode!r}")
 
+    machine_specs = {m.code: (m.group, m.tonnage) for m in db.query(db_models.Machine).all()}
     molds, components, report = import_from_client_files(
-        overview_bytes, zppi_bytes, skip_completed=skip_completed
+        overview_bytes, zppi_bytes, skip_completed=skip_completed, machine_specs=machine_specs
     )
     outcome = ImportOutcome(dry_run=dry_run, report=report)
     if not report.ok:
@@ -245,13 +306,15 @@ def run_client_import(
     try:
         persist_molds(db, molds, outcome, dry_run)
         persist_components(db, plan_id, components, mode, outcome, dry_run)
+        obsolete_codes = report.stats.get("obsoleted_mold_codes", [])
+        remove_obsolete_molds(db, obsolete_codes, outcome, dry_run, report=report)
         if dry_run:
             db.rollback()
         else:
             db.commit()
     except Exception as exc:  # noqa: BLE001 - a partial import is worse than none
         db.rollback()
-        report.error(f"Import failed and was rolled back: {exc}")
+        report.error(f"Import failed and was rolled back: {_readable_db_error(exc)}")
 
     return outcome
 

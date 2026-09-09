@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Iterator, Mapping, Optional, Sequence
@@ -28,6 +28,7 @@ OV_DESCRIPTION = "Material Description"
 OV_GROUP = "Machine group"
 OV_TONNAGE = "Size (Ton)"
 OV_CYCLE = "ST. Time per piece (sec.)"
+OV_ID_MACHINE = "ID Machine"
 
 ZP_MATERIAL = "Material Code"
 ZP_ORDER = "Order"
@@ -292,6 +293,15 @@ class OverviewRow:
     cycle_time_sec: float
     color: str
     excel_row: int
+    id_machine: str = ""
+    # Filled in by build_molds() once it knows whether this row's (group, tonnage)
+    # needed to be split into its own mold. Defaults to mold_code for callers
+    # (tests, mainly) that construct a row without going through build_molds().
+    resolved_mold_id: str = ""
+    # Set by build_molds() when this row's (group, tonnage) matches no real
+    # machine at all. build_components() drops the order instead of importing
+    # a component that can never be scheduled.
+    rejected_reason: str = ""
 
 
 def read_overview(
@@ -354,6 +364,9 @@ def read_overview(
             cycle_time_sec=cycle,
             color=extract_color(description),
             excel_row=excel_row,
+            # Optional: absent on sheets that don't have this column, in which
+            # case build_molds() simply has nothing to cross-check against.
+            id_machine=str(data.get(OV_ID_MACHINE) or "").strip(),
         )
 
         if material in rows:
@@ -373,43 +386,137 @@ def read_overview(
     return rows
 
 
-def build_molds(rows: Mapping[str, OverviewRow], report: ImportReport) -> list[dict[str, Any]]:
-    """Collapse material rows into unique molds.
+def build_molds(
+    rows: Mapping[str, OverviewRow],
+    report: ImportReport,
+    machine_specs: Optional[Mapping[str, tuple[str, int]]] = None,
+) -> list[dict[str, Any]]:
+    """Collapse material rows into unique molds, one per (mold code, group, tonnage).
 
-    A mold serves several material numbers because the same part is produced in
-    several colours. Tonnage occasionally differs between those rows, so we take
-    the maximum -- it is the minimum machine size that satisfies every variant.
+    A mold code serves several material numbers because the same part is produced
+    in several colours -- those safely collapse into one mold. But the same mold
+    code occasionally shows up against a *different* machine group/tonnage on
+    other rows (e.g. logged against a 90T small press for some colours and a 160T
+    medium press for another). Merging those by taking the majority group and the
+    maximum tonnage used to produce an impossible mold -- e.g. group=small with
+    tonnage=160, which no small machine satisfies -- silently making every
+    component on that mold unschedulable. Instead, each distinct (group, tonnage)
+    pair for a mold code becomes its own mold record, so every component still
+    matches a real machine.
+
+    ``machine_specs`` (machine code -> (real group, real tonnage), from the
+    machines table) catches a related problem: Overview's own "Machine group"
+    and "Size (Ton)" columns are free-typed and occasionally wrong for the
+    machine named in "ID Machine" -- e.g. a 190T press logged as a 350T LARGE
+    machine, so every material on it becomes "needs a 350T press", which
+    nothing satisfies. Where a row's ID Machine is recognised, the machine's
+    real group and tonnage replace whatever Overview typed for that row.
+
+    When ID Machine is blank, unrecognised, or the resulting (group, tonnage)
+    still matches no real machine of that group -- there is nothing to correct
+    it to, so the row is rejected outright rather than turned into a mold no
+    machine can ever run: no mold is created, its component(s) are dropped in
+    build_components(), and one warning names exactly which mold and materials
+    need fixing in the source file before the next import.
 
     component_id is deliberately left None: one mold maps to many materials, so
     no single value is correct, and ga_scheduler never reads the field.
     """
-    by_code: dict[str, dict[str, Any]] = {}
-    groups_seen: dict[str, Counter] = defaultdict(Counter)
+    if machine_specs:
+        for row in rows.values():
+            spec = machine_specs.get(row.id_machine)
+            if spec is None:
+                continue
+            real_group, real_tonnage = spec
+            if real_group != row.group or real_tonnage != row.tonnage:
+                report.warn(
+                    f"Overview row {row.excel_row}: material {row.material} labels "
+                    f"machine {row.id_machine} as {row.group!r}/{row.tonnage}T, but "
+                    f"the machines table says {real_group!r}/{real_tonnage}T; using "
+                    f"the machines table."
+                )
+                row.group = real_group
+                row.tonnage = real_tonnage
 
+    max_tonnage_by_group: dict[str, int] = {}
+    if machine_specs:
+        for real_group, real_tonnage in machine_specs.values():
+            if real_group is not None:
+                max_tonnage_by_group[real_group] = max(
+                    max_tonnage_by_group.get(real_group, 0), real_tonnage
+                )
+
+    rejected_by_variant: dict[tuple[str, Optional[str], int], list[OverviewRow]] = defaultdict(list)
+    if max_tonnage_by_group:
+        for row in rows.values():
+            cap = max_tonnage_by_group.get(row.group, 0)
+            if row.tonnage > cap:
+                row.rejected_reason = (
+                    f"no {row.group} machine can reach {row.tonnage}T "
+                    f"(largest available {row.group} machine is {cap}T)"
+                    if cap
+                    else f"no {row.group} machine exists at all"
+                )
+                rejected_by_variant[(row.mold_code, row.group, row.tonnage)].append(row)
+
+    for (mold_code, group, tonnage), bad_rows in rejected_by_variant.items():
+        materials = ", ".join(sorted({r.material for r in bad_rows}))
+        report.warn(
+            f"Mold {mold_code}: needs a {group} machine rated {tonnage}T, but "
+            f"{bad_rows[0].rejected_reason}. Not imported -- fix the group/tonnage "
+            f"for material(s) {materials} in Overview and re-import."
+        )
+
+    variants: dict[tuple[str, Optional[str], int], list[OverviewRow]] = defaultdict(list)
     for row in rows.values():
-        groups_seen[row.mold_code][row.group] += 1
-        existing = by_code.get(row.mold_code)
-        if existing is None:
-            by_code[row.mold_code] = {
-                "code": row.mold_code,
-                "name": row.mold_code,   # scheduler joins on name; keep them identical
-                "group": row.group,
-                "tonnage": row.tonnage,
+        if row.rejected_reason:
+            continue
+        variants[(row.mold_code, row.group, row.tonnage)].append(row)
+
+    rows_by_code: dict[str, list[tuple[str, Optional[str], int]]] = defaultdict(list)
+    for key in variants:
+        rows_by_code[key[0]].append(key)
+
+    def variant_suffix(group: Optional[str], tonnage: int) -> str:
+        # Both group and tonnage must be in the id: two variants can share a
+        # tonnage with different groups (or vice versa), and either alone can
+        # collide into the same "<code>-..." string for two distinct molds.
+        return f"{group}-{tonnage}T"
+
+    molds: list[dict[str, Any]] = []
+    obsoleted_codes: set[str] = set()
+    for code, keys in rows_by_code.items():
+        split = len(keys) > 1
+        # Deterministic order regardless of dict/materials iteration order.
+        for _, group, tonnage in sorted(keys, key=lambda k: (k[2], k[1] or "")):
+            variant_rows = variants[(code, group, tonnage)]
+            mold_id = f"{code}-{variant_suffix(group, tonnage)}" if split else code
+            for row in variant_rows:
+                row.resolved_mold_id = mold_id
+            molds.append({
+                "code": mold_id,
+                "name": mold_id,   # scheduler joins on name; keep them identical
+                "group": group,
+                "tonnage": tonnage,
                 "component_id": None,
-            }
-        elif row.tonnage > existing["tonnage"]:
-            existing["tonnage"] = row.tonnage
-
-    for code, counter in groups_seen.items():
-        if len(counter) > 1:
-            winner = counter.most_common(1)[0][0]
-            by_code[code]["group"] = winner
-            report.warn(
-                f"Mold {code}: conflicting machine groups {dict(counter)}; using {winner!r}."
+            })
+        if split:
+            variant_names = ", ".join(
+                f"{code}-{variant_suffix(g, t)}" for _, g, t in sorted(keys, key=lambda k: (k[2], k[1] or ""))
             )
+            report.warn(
+                f"Mold {code}: found {len(keys)} different (group, tonnage) combinations "
+                f"across materials; split into separate molds ({variant_names})."
+            )
+            obsoleted_codes.add(code)
 
-    molds = sorted(by_code.values(), key=lambda m: m["code"])
+    molds.sort(key=lambda m: m["code"])
     report.stats["molds"] = len(molds)
+    # The bare code (e.g. "11C202AN") is superseded by its split variants and no
+    # longer produced by this function. persist_molds() uses this to remove the
+    # old merged row left over from before a split -- but only if nothing still
+    # references it, so an older plan's components are never orphaned.
+    report.stats["obsoleted_mold_codes"] = sorted(obsoleted_codes)
     return molds
 
 
@@ -510,11 +617,17 @@ def build_components(
     unmatched: list[str] = []
     completed = 0
     zero_qty = 0
+    rejected = 0
 
     for order in orders:
         source = overview.get(order.material)
         if source is None:
             unmatched.append(order.material)
+            continue
+        if source.rejected_reason:
+            # Already warned about in build_molds(), which names the mold and
+            # every affected material once rather than once per order here.
+            rejected += 1
             continue
 
         remaining = max(order.planned - order.produced, 0)
@@ -537,9 +650,10 @@ def build_components(
                 "quantity": order.planned,
                 "finished": min(order.produced, order.planned),
                 "cycle_time_sec": source.cycle_time_sec,
-                # Mold identity: the scheduler joins on the mold name, which we
-                # set equal to the mold code in build_molds().
-                "mold_id": source.mold_code,
+                # Mold identity: the scheduler joins on the mold name, which
+                # build_molds() sets equal to this row's resolved_mold_id (the
+                # mold code, or "<code>-<tonnage>T" if that code was split).
+                "mold_id": source.resolved_mold_id or source.mold_code,
                 "color": source.color,
                 "start_date": order.start_date,
                 "due_date": order.due_date,
@@ -573,6 +687,7 @@ def build_components(
     report.stats["orders_already_complete"] = completed
     report.stats["components_without_color"] = no_color
     report.stats["orders_zero_quantity"] = zero_qty
+    report.stats["orders_rejected_infeasible"] = rejected
     return components
 
 
@@ -606,8 +721,16 @@ def import_from_client_files(
     zppi_bytes: bytes,
     skip_completed: bool = False,
     overview_last_row: Optional[int] = OVERVIEW_LAST_DATA_ROW,
+    machine_specs: Optional[Mapping[str, tuple[str, int]]] = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], ImportReport]:
-    """Parse both workbooks and return (molds, components, report)."""
+    """Parse both workbooks and return (molds, components, report).
+
+    ``machine_specs`` (machine code -> (real group, real tonnage)) lets
+    build_molds() correct Overview rows whose typed group/tonnage disagree
+    with the machine's real spec; see build_molds() for why that matters.
+    Optional because plain parsing (e.g. in tests, or a dry preview with no
+    machines loaded yet) should work without a database at hand.
+    """
     report = ImportReport()
 
     overview = read_overview(overview_bytes, report, last_data_row=overview_last_row)
@@ -617,7 +740,7 @@ def import_from_client_files(
         report.error("No usable rows found in the Overview sheet.")
         return [], [], report
 
-    molds = build_molds(overview, report)
+    molds = build_molds(overview, report, machine_specs=machine_specs)
 
     orders = read_orders(zppi_bytes, report)
     if not report.ok:

@@ -83,10 +83,11 @@ def test_color_typos_fold_to_one_spelling():
 
 # --- molds -----------------------------------------------------------------
 
-def _ov(material, mold_code, group="small", tonnage=120, desc="PART", cycle=10.0, row=3):
+def _ov(material, mold_code, group="small", tonnage=120, desc="PART", cycle=10.0, row=3, id_machine=""):
     return OverviewRow(
         material=material, mold_code=mold_code, description=desc, group=group,
         tonnage=tonnage, cycle_time_sec=cycle, color=extract_color(desc), excel_row=row,
+        id_machine=id_machine,
     )
 
 
@@ -110,10 +111,14 @@ def test_mold_code_and_name_are_identical():
     assert molds[0]["code"] == molds[0]["name"]
 
 
-def test_mold_tonnage_takes_the_maximum():
-    """Tonnage is the minimum machine size that satisfies every variant."""
+def test_different_tonnage_splits_into_separate_molds():
+    """Merging different-tonnage rows by taking the max used to produce a mold
+    spec no machine actually satisfies. Each distinct (group, tonnage) is now
+    its own mold instead, named "<code>-<group>-<tonnage>T"."""
     rows = {"1": _ov("1", "11G203AN", tonnage=160), "2": _ov("2", "11G203AN", tonnage=190)}
-    assert build_molds(rows, ImportReport())[0]["tonnage"] == 190
+    molds = build_molds(rows, ImportReport())
+    assert {m["tonnage"] for m in molds} == {160, 190}
+    assert {m["code"] for m in molds} == {"11G203AN-small-160T", "11G203AN-small-190T"}
 
 
 def test_mold_component_id_is_left_unset():
@@ -122,15 +127,116 @@ def test_mold_component_id_is_left_unset():
     assert build_molds({"1": _ov("1", "A")}, ImportReport())[0]["component_id"] is None
 
 
-def test_conflicting_mold_groups_warn_and_pick_the_majority():
+def test_conflicting_group_or_tonnage_splits_into_separate_molds():
+    """A mold code logged against both a 90T small press (some colours) and a
+    160T medium press (others) used to merge into group=small, tonnage=160 --
+    a spec no small machine satisfies, silently making every component on that
+    mold unschedulable. Splitting by the exact (group, tonnage) pairing keeps
+    each variant on the machine class it was actually produced on."""
     rows = {
-        "1": _ov("1", "2C304CN", group="small"),
-        "2": _ov("2", "2C304CN", group="small"),
-        "3": _ov("3", "2C304CN", group="medium"),
+        "1": _ov("1", "2C304CN", group="small", tonnage=90),
+        "2": _ov("2", "2C304CN", group="small", tonnage=90),
+        "3": _ov("3", "2C304CN", group="medium", tonnage=160),
     }
     report = ImportReport()
-    assert build_molds(rows, report)[0]["group"] == "small"
-    assert any("conflicting machine groups" in w for w in report.warnings)
+    molds = build_molds(rows, report)
+    assert len(molds) == 2
+    by_tonnage = {m["tonnage"]: m for m in molds}
+    assert by_tonnage[90]["group"] == "small"
+    assert by_tonnage[160]["group"] == "medium"
+    assert any("split into separate molds" in w for w in report.warnings)
+
+
+def test_components_resolve_to_the_split_mold_that_matches_their_own_row():
+    """Each material keeps the mold variant it was actually logged against,
+    rather than inheriting whatever (group, tonnage) another colour's row
+    happened to merge in as."""
+    overview = {
+        "A": _ov("A", "11C202AN", group="small", tonnage=90),
+        "B": _ov("B", "11C202AN", group="medium", tonnage=160),
+    }
+    build_molds(overview, ImportReport())  # mutates resolved_mold_id in place
+    components = build_components(
+        overview, [_order("A", "O1"), _order("B", "O2")], ImportReport()
+    )
+    mold_id_by_material = {c["component_id"].split("-")[0]: c["mold_id"] for c in components}
+    assert mold_id_by_material["A"] == "11C202AN-small-90T"
+    assert mold_id_by_material["B"] == "11C202AN-medium-160T"
+
+
+def test_wrong_overview_group_is_corrected_from_machine_specs():
+    """Overview's typed "Machine group"/"Size (Ton)" columns are free text and
+    can disagree with the machine named in "ID Machine" (e.g. a 350T press
+    mislabelled MIDDLE). With only one row for the mold there's nothing to
+    split against, so the real machine's spec must win instead."""
+    rows = {"1": _ov("1", "91A207AN", group="medium", tonnage=350, id_machine="M122Y")}
+    report = ImportReport()
+    molds = build_molds(rows, report, machine_specs={"M122Y": ("large", 350)})
+    assert len(molds) == 1
+    assert molds[0]["group"] == "large"
+    assert molds[0]["code"] == "91A207AN"  # still a single variant -- no split needed
+    assert any("machines table says" in w for w in report.warnings)
+
+
+def test_no_machine_specs_leaves_overview_label_untouched():
+    """Without a machines lookup (e.g. parsing outside a DB session), the
+    Overview label is trusted as before -- this is an additive check, not a
+    required one."""
+    rows = {"1": _ov("1", "91A207AN", group="medium", tonnage=350, id_machine="M122Y")}
+    molds = build_molds(rows, ImportReport())
+    assert molds[0]["group"] == "medium"
+
+
+def test_unrecognised_id_machine_is_left_alone():
+    """A machine code Overview names but that isn't in the machines table
+    (e.g. retired, or a typo) has nothing to correct against -- it falls
+    through to the feasibility check below instead."""
+    rows = {"1": _ov("1", "91A207AN", group="large", tonnage=350, id_machine="M999Z")}
+    molds = build_molds(rows, ImportReport(), machine_specs={"M122Y": ("large", 350)})
+    assert molds[0]["group"] == "large"
+
+
+def test_tonnage_no_real_machine_can_reach_is_rejected_not_imported():
+    """91A207AN needing a 350T MEDIUM machine (the uncorrected label, e.g. ID
+    Machine wasn't recognised) matches nothing -- the largest medium machine
+    is only 190T. Rather than creating an unschedulable mold, it's rejected
+    outright and reported so the user fixes Overview before re-importing."""
+    rows = {"1": _ov("1", "91A207AN", group="medium", tonnage=350, id_machine="")}
+    report = ImportReport()
+    machine_specs = {"M112G": ("medium", 190), "M121G": ("large", 420)}
+    molds = build_molds(rows, report, machine_specs=machine_specs)
+    assert molds == []
+    assert rows["1"].rejected_reason
+    warning = next(w for w in report.warnings if "91A207AN" in w)
+    assert "medium" in warning and "350T" in warning and "190T" in warning
+    assert "Not imported" in warning
+
+
+def test_rejected_material_drops_its_orders_instead_of_importing_them():
+    overview = {"1": _ov("1", "91A207AN", group="medium", tonnage=350)}
+    report = ImportReport()
+    build_molds(overview, report, machine_specs={"M112G": ("medium", 190)})
+    components = build_components(overview, [_order("1", "O1")], report)
+    assert components == []
+    assert report.stats["orders_rejected_infeasible"] == 1
+
+
+def test_feasible_variant_of_a_split_mold_is_kept_even_if_a_sibling_is_rejected():
+    """2T201AN logged as 350T against both a real 350T LARGE press (valid) and
+    -- via a mislabelled row -- effectively needing 350T on a machine group
+    that tops out at 190T (invalid). The valid variant must still be
+    imported; only the impossible one is dropped."""
+    rows = {
+        "1": _ov("1", "2T201AN", group="large", tonnage=350, id_machine="M121G"),
+        "2": _ov("2", "2T201AN", group="medium", tonnage=350, id_machine=""),
+    }
+    report = ImportReport()
+    machine_specs = {"M112G": ("medium", 190), "M121G": ("large", 420)}
+    molds = build_molds(rows, report, machine_specs=machine_specs)
+    assert len(molds) == 1
+    assert molds[0]["group"] == "large"
+    assert rows["2"].rejected_reason
+    assert rows["1"].resolved_mold_id == "2T201AN"  # only one feasible variant -- no split needed
 
 
 # --- components ------------------------------------------------------------

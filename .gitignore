@@ -67,3 +67,6 @@ pnpm-debug.log*
 
 # ===== Docker =====
 *.pid
+
+# ===== Windows installer =====
+.pg_superuser_password.txt

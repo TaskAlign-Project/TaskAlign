@@ -6,9 +6,11 @@ from app.database import Base
 from app.models import db_models
 from app.services.client_import import (
     ImportOutcome,
+    _readable_db_error,
     check_capacity,
     persist_components,
     persist_molds,
+    remove_obsolete_molds,
 )
 from app.services.overview_import import ImportReport
 
@@ -94,6 +96,55 @@ def test_manual_component_id_on_a_mold_survives_reimport(db):
     persist_molds(db, [_mold("A", tonnage=999)], ImportOutcome(), dry_run=False)
     db.commit()
     assert db.query(db_models.Mold).one().component_id == "hand-set"
+
+
+# --- obsolete mold cleanup ---------------------------------------------------
+
+def test_obsolete_mold_is_removed_when_unreferenced(db):
+    """A bare code split into "-90T"/"-160T" variants should not linger once
+    nothing points at it any more."""
+    persist_molds(db, [_mold("11C202AN")], ImportOutcome(), dry_run=False)
+    db.commit()
+    outcome = ImportOutcome()
+    remove_obsolete_molds(db, ["11C202AN"], outcome, dry_run=False)
+    db.commit()
+    assert outcome.molds_removed == 1
+    assert db.query(db_models.Mold).filter_by(code="11C202AN").first() is None
+
+
+def test_obsolete_mold_is_kept_if_a_component_still_references_it(db, plan):
+    """An older plan (or the same plan, if remove_obsolete_molds ran before its
+    components were replaced) can still point at the bare code -- deleting it
+    would make that component unschedulable, so it's kept and reported."""
+    persist_molds(db, [_mold("11C202AN")], ImportOutcome(), dry_run=False)
+    db.add(db_models.Component(plan_id=plan.id, **_component(mold="11C202AN")))
+    db.commit()
+
+    outcome = ImportOutcome()
+    report = ImportReport()
+    remove_obsolete_molds(db, ["11C202AN"], outcome, dry_run=False, report=report)
+    db.commit()
+
+    assert outcome.molds_removed == 0
+    assert db.query(db_models.Mold).filter_by(code="11C202AN").first() is not None
+    assert any("still reference it" in w for w in report.warnings)
+
+
+def test_dry_run_reports_removal_without_deleting(db):
+    persist_molds(db, [_mold("11C202AN")], ImportOutcome(), dry_run=False)
+    db.commit()
+    outcome = ImportOutcome()
+    remove_obsolete_molds(db, ["11C202AN"], outcome, dry_run=True)
+    db.commit()
+    assert outcome.molds_removed == 1
+    assert db.query(db_models.Mold).filter_by(code="11C202AN").first() is not None
+
+
+def test_remove_obsolete_molds_is_a_noop_for_unknown_codes(db):
+    outcome = ImportOutcome()
+    remove_obsolete_molds(db, ["NEVER-EXISTED"], outcome, dry_run=False)
+    db.commit()
+    assert outcome.molds_removed == 0
 
 
 # --- components ------------------------------------------------------------
@@ -214,3 +265,35 @@ def test_unavailable_machines_do_not_count_toward_capacity(db):
     report = ImportReport()
     check_capacity(db, [_component(qty=10_000)], [_mold("3K201AN", group="small")], 30, report)
     assert any("no available machine" in w for w in report.warnings)
+
+
+# --- readable db errors ------------------------------------------------------
+
+class _FakeOrig:
+    def __init__(self, pgerror):
+        self.pgerror = pgerror
+
+
+class _FakeIntegrityError(Exception):
+    def __init__(self, orig):
+        self.orig = orig
+
+
+def test_readable_db_error_strips_the_sql_and_parameter_dump():
+    """SQLAlchemy appends the full statement and every bound parameter to the
+    exception text; only psycopg2's own ERROR/DETAIL lines are useful to a
+    user deciding what to fix."""
+    orig = _FakeOrig(
+        "ERROR:  duplicate key value violates unique constraint \"molds_code_key\"\n"
+        "DETAIL:  Key (code)=(2T201AN-350T) already exists.\n"
+    )
+    exc = _FakeIntegrityError(orig)
+    message = _readable_db_error(exc)
+    assert "duplicate key value violates unique constraint" in message
+    assert "Key (code)=(2T201AN-350T) already exists" in message
+    assert "[SQL:" not in message
+    assert "[parameters:" not in message
+
+
+def test_readable_db_error_falls_back_for_non_db_exceptions():
+    assert _readable_db_error(ValueError("plain failure")) == "plain failure"
