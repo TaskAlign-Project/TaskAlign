@@ -7,7 +7,11 @@ $root = Split-Path -Parent $PSScriptRoot
 $pgService = Get-Service -Name "postgresql-x64-16" -ErrorAction SilentlyContinue
 if ($pgService -and $pgService.Status -ne "Running") {
     Write-Host "Starting PostgreSQL service..."
-    Start-Service $pgService.Name
+    try {
+        Start-Service $pgService.Name
+    } catch {
+        Write-Host "Could not start PostgreSQL ($($_.Exception.Message)). The backend will fail to connect until it's running -- start it manually or ask an admin to." -ForegroundColor Yellow
+    }
 }
 
 Write-Host "Starting backend..."
