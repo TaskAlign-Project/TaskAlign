@@ -45,3 +45,22 @@ TaskAlign uses heuristic/optimization logic to propose a high-quality draft sche
      - Gantt/timeline visualization
      - daily workload summaries per machine
      - exporting to spreadsheets for planner review and manual adjustments
+
+## Running the Project
+
+Requires [Docker](https://www.docker.com/) (with Compose) installed. No other setup is needed — the database, backend, and frontend all run in containers.
+
+```bash
+docker compose up -d --build
+```
+
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+
+Database migrations run automatically on backend startup. To stop everything:
+
+```bash
+docker compose down
+```
+
+Default ports and database credentials can be overridden by copying [`.env.example`](.env.example) to `.env` and editing it — this is optional, sensible defaults are already built in.
