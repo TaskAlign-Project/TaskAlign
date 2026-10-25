@@ -202,162 +202,171 @@ export default function PlanPage() {
   return (
     <div className="flex flex-col h-full">
       <AppHeader title="Setup Plan" description={`Configuring "${plan.name}"`} />
-      <div className="flex-1 p-4 md:p-6 flex flex-col gap-6 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
+        {/* Centered column; content is laid out as a bento grid */}
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 p-4 md:p-6">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
 
-        {/* Plan info */}
-        <div className="flex flex-wrap items-center gap-3">
-          <Badge variant="secondary" className="text-sm">{plan.name}</Badge>
-          {hasRuns && (
-            <Badge variant="outline" className="text-xs">
-              {runs.length} previous run{runs.length !== 1 && "s"}
-            </Badge>
-          )}
-          <Button variant="link" size="sm" asChild className="h-auto p-0">
-            <Link href={`/plans/${plan.id}`}>View Plan Details</Link>
-          </Button>
-        </div>
-
-        {/* Data Status */}
-        <div className="flex flex-wrap gap-3 text-sm">
-          <span className="text-muted-foreground">
-            Machines:{" "}
-            <span className="font-medium text-card-foreground">
-              {availableMachines}/{machines.length}
-            </span>
-            {machines.length > availableMachines && (
-              <span className="text-amber-600 ml-1">
-                ({machines.length - availableMachines} unavailable)
-              </span>
-            )}
-          </span>
-          <span className="text-muted-foreground">
-            Molds: <span className="font-medium text-card-foreground">{molds.length}</span>
-          </span>
-          <span className="text-muted-foreground">
-            Components: <span className="font-medium text-card-foreground">{components.length}</span>
-          </span>
-        </div>
-
-        {/* Mode selection */}
-        {hasRuns && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
-            <Card
-              className={`cursor-pointer transition-all ${
-                mode === "resume" ? "border-primary ring-1 ring-primary" : "hover:border-muted-foreground/50"
+            {/* Plan info */}
+            <div
+              className={`flex flex-wrap content-center items-center gap-2 rounded-xl border bg-card p-4 ${
+                hasRuns ? "md:col-span-3" : "md:col-span-6"
               }`}
-              onClick={() => setMode("resume")}
             >
-              <CardHeader className="p-4 pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <RotateCcw className="h-4 w-4" />Resume
-                </CardTitle>
-                <CardDescription className="text-xs">Re-run with current inputs on this plan</CardDescription>
-              </CardHeader>
-            </Card>
-          </div>
-        )}
+              <Badge variant="secondary" className="text-sm">{plan.name}</Badge>
+              {hasRuns && (
+                <Badge variant="outline" className="text-xs">
+                  {runs.length} previous run{runs.length !== 1 && "s"}
+                </Badge>
+              )}
+              <Button variant="link" size="sm" asChild className="h-auto p-0">
+                <Link href={`/plans/${plan.id}`}>View Plan Details</Link>
+              </Button>
+            </div>
 
-        {/* Plan Setup Form */}
-        <Card className="max-w-lg">
-          <CardHeader>
-            <CardTitle className="text-base">Schedule Parameters</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="current-date">Current Date (Start)</Label>
-                <Input
-                  id="current-date"
-                  type="date"
-                  value={form.current_date || ""}
-                  onChange={(e) => updateField("current_date", e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">Start date of the schedule</p>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="start-time">Start Time</Label>
-                <Input
-                  id="start-time"
-                  type="time"
-                  value={form.start_time || "08:00"}
-                  onChange={(e) => updateField("start_time", e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">Time factory begins work</p>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="month-days">Month Days</Label>
-                <Input
-                  id="month-days"
-                  type="number"
-                  value={form.month_days || ""}
-                  onChange={(e) => updateField("month_days", parseInt(e.target.value) || 0)}
-                />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="mold-change">Mold Change Time (minutes)</Label>
-              <Input
-                id="mold-change"
-                type="number"
-                step="1"
-                value={form.mold_change_time_minutes ?? ""}
-                onChange={(e) => updateField("mold_change_time_minutes", parseInt(e.target.value) || 0)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="color-change">Color Change Time (minutes)</Label>
-              <Input
-                id="color-change"
-                type="number"
-                step="1"
-                value={form.color_change_time_minutes ?? ""}
-                onChange={(e) => updateField("color_change_time_minutes", parseInt(e.target.value) || 0)}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Run Button */}
-        <div className="flex items-center gap-4">
-          <Button onClick={handleRun} disabled={loading} size="lg">
-            {loading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 h-4 w-4" />
+            {/* Mode selection */}
+            {hasRuns && (
+              <Card
+                className={`cursor-pointer transition-all md:col-span-3 ${
+                  mode === "resume" ? "border-primary ring-1 ring-primary" : "hover:border-muted-foreground/50"
+                }`}
+                onClick={() => setMode("resume")}
+              >
+                <CardHeader className="p-4 pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <RotateCcw className="h-4 w-4" />Resume
+                  </CardTitle>
+                  <CardDescription className="text-xs">Re-run with current inputs on this plan</CardDescription>
+                </CardHeader>
+              </Card>
             )}
-            {loading
-              ? "Running Scheduler..."
-              : hasRuns
-              ? mode === "fresh" ? "Run Fresh" : "Re-run"
-              : "Run Scheduler"}
-          </Button>
-          {(result || lastRun) && (
-            <Button variant="outline" size="lg" asChild>
-              <Link href="/plan/output">
-                <ExternalLink className="mr-2 h-4 w-4" />View Output
-              </Link>
-            </Button>
+
+            {/* Data Status */}
+            <div className="rounded-xl border bg-card p-4 md:col-span-2">
+              <p className="text-xs text-muted-foreground">Machines</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-card-foreground">
+                {availableMachines}/{machines.length}
+              </p>
+              {machines.length > availableMachines && (
+                <p className="mt-0.5 text-xs text-amber-600">
+                  ({machines.length - availableMachines} unavailable)
+                </p>
+              )}
+            </div>
+            <div className="rounded-xl border bg-card p-4 md:col-span-2">
+              <p className="text-xs text-muted-foreground">Molds</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-card-foreground">{molds.length}</p>
+            </div>
+            <div className="rounded-xl border bg-card p-4 md:col-span-2">
+              <p className="text-xs text-muted-foreground">Components</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-card-foreground">{components.length}</p>
+            </div>
+
+            {/* Plan Setup Form */}
+            <Card className="md:col-span-4">
+              <CardHeader>
+                <CardTitle className="text-base">Schedule Parameters</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="current-date">Current Date (Start)</Label>
+                    <Input
+                      id="current-date"
+                      type="date"
+                      value={form.current_date || ""}
+                      onChange={(e) => updateField("current_date", e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Start date of the schedule</p>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="start-time">Start Time</Label>
+                    <Input
+                      id="start-time"
+                      type="time"
+                      value={form.start_time || "08:00"}
+                      onChange={(e) => updateField("start_time", e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Time factory begins work</p>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="month-days">Month Days</Label>
+                    <Input
+                      id="month-days"
+                      type="number"
+                      value={form.month_days || ""}
+                      onChange={(e) => updateField("month_days", parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="mold-change">Mold Change Time (minutes)</Label>
+                    <Input
+                      id="mold-change"
+                      type="number"
+                      step="1"
+                      value={form.mold_change_time_minutes ?? ""}
+                      onChange={(e) => updateField("mold_change_time_minutes", parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="color-change">Color Change Time (minutes)</Label>
+                    <Input
+                      id="color-change"
+                      type="number"
+                      step="1"
+                      value={form.color_change_time_minutes ?? ""}
+                      onChange={(e) => updateField("color_change_time_minutes", parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Run Button */}
+            <div className="flex flex-col justify-center gap-3 rounded-xl border bg-card p-4 md:col-span-2">
+              <Button onClick={handleRun} disabled={loading} size="lg" className="w-full">
+                {loading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="mr-2 h-4 w-4" />
+                )}
+                {loading
+                  ? "Running Scheduler..."
+                  : hasRuns
+                  ? mode === "fresh" ? "Run Fresh" : "Re-run"
+                  : "Run Scheduler"}
+              </Button>
+              {(result || lastRun) && (
+                <Button variant="outline" size="lg" asChild className="w-full">
+                  <Link href="/plan/output">
+                    <ExternalLink className="mr-2 h-4 w-4" />View Output
+                  </Link>
+                </Button>
+              )}
+              {loading && (
+                <p className="text-sm text-muted-foreground">This may take a moment...</p>
+              )}
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+              <p className="text-sm font-medium text-destructive">Scheduler Error</p>
+              <p className="text-sm text-destructive/90 mt-1">{error}</p>
+            </div>
           )}
-          {loading && (
-            <p className="text-sm text-muted-foreground">This may take a moment...</p>
+
+          {/* Results */}
+          {result && (
+            <>
+              <Separator />
+              <ScheduleResults data={result} />
+            </>
           )}
         </div>
-
-        {/* Error */}
-        {error && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-            <p className="text-sm font-medium text-destructive">Scheduler Error</p>
-            <p className="text-sm text-destructive/90 mt-1">{error}</p>
-          </div>
-        )}
-
-        {/* Results */}
-        {result && (
-          <>
-            <Separator />
-            <ScheduleResults data={result} />
-          </>
-        )}
       </div>
     </div>
   )

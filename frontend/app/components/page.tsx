@@ -280,7 +280,7 @@ export default function ComponentsPage() {
                   const displayId = c.component_id ?? c.id
                   return (
                     <TableRow key={c.id} className={isComplete ? "bg-emerald-500/10" : ""}>
-                      <TableCell className="font-mono text-sm">
+                      <TableCell className="whitespace-nowrap font-mono text-sm">
                         {displayId}
                         {isComplete && (
                           <Badge variant="default" className="ml-2 text-[10px] bg-emerald-600">Done</Badge>
@@ -293,11 +293,11 @@ export default function ComponentsPage() {
                       <TableCell className="text-sm">
                         {resolveMoldName(c.mold_id, molds)}
                       </TableCell>
-                      <TableCell>{c.color}</TableCell>
-                      <TableCell className="text-xs">
+                      <TableCell className="whitespace-nowrap">{c.color}</TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">
                         {c.start_date ? new Date(c.start_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "-"}
                       </TableCell>
-                      <TableCell className="text-xs">
+                      <TableCell className="whitespace-nowrap text-xs">
                         {c.due_date ? new Date(c.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "-"}
                       </TableCell>
                       <TableCell className="text-right">{c.lead_time_days}</TableCell>

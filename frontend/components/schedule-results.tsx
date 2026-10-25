@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label"
 import type { ScheduleResponse, Assignment } from "@/lib/types"
 
 const TASK_TYPE_COLORS: Record<string, string> = {
-  PRODUCE: "bg-accent text-accent-foreground",
+  PRODUCE: "bg-teal-500/15 text-teal-700",
   CHANGE_COLOR: "bg-chart-3/20 text-foreground",
   CHANGE_MOLD: "bg-chart-5/20 text-foreground",
   WAIT: "bg-muted text-muted-foreground",

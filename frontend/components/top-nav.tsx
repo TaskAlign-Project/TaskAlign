@@ -61,7 +61,7 @@ export function TopNav() {
 
   return (
     <header className="sticky top-0 z-50 border-b bg-card">
-      <div className="flex h-14 items-center gap-6 px-4 md:px-6">
+      <div className="flex h-12 items-center gap-3 px-4 md:px-6 xl:gap-6">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0">
           <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary">
@@ -84,13 +84,13 @@ export function TopNav() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  "flex items-center gap-2 whitespace-nowrap rounded-md border border-transparent px-2.5 py-1.5 text-sm font-medium transition-colors xl:px-3",
                   isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-card-foreground"
+                    ? "border-primary/40 text-primary"
+                    : "text-muted-foreground hover:border-border hover:text-card-foreground"
                 )}
               >
-                <item.icon className="h-4 w-4 shrink-0" />
+                <item.icon className="hidden h-4 w-4 shrink-0 xl:block" />
                 {item.label}
               </Link>
             )
@@ -101,7 +101,7 @@ export function TopNav() {
         <div className="hidden md:flex items-center gap-2 ml-auto">
           {hasActivePlan && activePlanName ? (
             <Link href="/plans">
-              <Badge variant="secondary" className="cursor-pointer hover:bg-muted">
+              <Badge variant="secondary" className="cursor-pointer whitespace-nowrap hover:bg-muted">
                 Plan: {activePlanName}
               </Badge>
             </Link>
@@ -109,7 +109,7 @@ export function TopNav() {
             <Link href="/plans">
               <Badge
                 variant="destructive"
-                className="cursor-pointer gap-1.5 hover:bg-destructive/90"
+                className="cursor-pointer gap-1.5 whitespace-nowrap hover:bg-destructive/90"
               >
                 <AlertCircle className="h-3 w-3" />
                 No plan selected
@@ -173,10 +173,10 @@ export function TopNav() {
                       href={item.href}
                       onClick={() => setOpen(false)}
                       className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                        "flex items-center gap-3 rounded-md border border-transparent px-3 py-2.5 text-sm font-medium transition-colors",
                         isActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          ? "border-primary/40 text-primary"
+                          : "text-muted-foreground hover:border-border hover:text-foreground"
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />

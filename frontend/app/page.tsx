@@ -71,72 +71,70 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-full">
       <AppHeader title="Dashboard" description="Factory scheduling overview" />
-      <div className="flex-1 p-4 md:p-6 flex flex-col gap-6">
-        {/* Hero */}
-        <section className="rounded-lg border bg-card p-6 md:p-8">
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-card-foreground text-balance">
-            TaskAlign — Factory Scheduling System
-          </h2>
-          <p className="mt-2 text-muted-foreground max-w-2xl leading-relaxed">
-            Plan and optimize your injection molding monthly production schedule
-            with a genetic-algorithm-assisted draft scheduler. Manage machines,
-            molds, and components, then generate an optimized production plan in
-            seconds.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button asChild>
-              <Link href="/machines">
-                <Cog className="mr-2 h-4 w-4" />
-                Machines
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/molds">
-                <Box className="mr-2 h-4 w-4" />
-                Molds
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/components">
-                <Puzzle className="mr-2 h-4 w-4" />
-                Components
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/plan">
-                <CalendarClock className="mr-2 h-4 w-4" />
-                Setup Plan
-              </Link>
-            </Button>
-          </div>
-        </section>
+      <div className="flex-1 p-4 md:p-6">
+        {/* Bento grid: one large hero tile beside three status tiles */}
+        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:auto-rows-[minmax(7.5rem,auto)]">
+          {/* Hero */}
+          <section className="flex flex-col rounded-xl border bg-card p-5 sm:col-span-2 lg:row-span-2">
+            <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-card-foreground text-balance">
+              TaskAlign — Factory Scheduling System
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground max-w-2xl leading-relaxed">
+              Plan and optimize your injection molding monthly production schedule
+              with a genetic-algorithm-assisted draft scheduler. Manage machines,
+              molds, and components, then generate an optimized production plan in
+              seconds.
+            </p>
+            <div className="mt-auto flex flex-wrap gap-2 pt-6">
+              <Button asChild>
+                <Link href="/machines">
+                  <Cog className="mr-2 h-4 w-4" />
+                  Machines
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/molds">
+                  <Box className="mr-2 h-4 w-4" />
+                  Molds
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/components">
+                  <Puzzle className="mr-2 h-4 w-4" />
+                  Components
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/plan">
+                  <CalendarClock className="mr-2 h-4 w-4" />
+                  Setup Plan
+                </Link>
+              </Button>
+            </div>
+          </section>
 
-        {/* Quick Status */}
-        <section>
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-            Quick Status
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatusCard
-              label="Machines"
-              count={counts.machines}
-              href="/machines"
-              icon={<Cog className="h-5 w-5" />}
-            />
-            <StatusCard
-              label="Molds"
-              count={counts.molds}
-              href="/molds"
-              icon={<Box className="h-5 w-5" />}
-            />
-            <StatusCard
-              label="Components"
-              count={counts.components}
-              href="/components"
-              icon={<Puzzle className="h-5 w-5" />}
-            />
-          </div>
-        </section>
+          {/* Quick Status */}
+          <h3 className="sr-only">Quick Status</h3>
+          <StatusCard
+            label="Machines"
+            count={counts.machines}
+            href="/machines"
+            icon={<Cog className="h-5 w-5" />}
+          />
+          <StatusCard
+            label="Molds"
+            count={counts.molds}
+            href="/molds"
+            icon={<Box className="h-5 w-5" />}
+          />
+          <StatusCard
+            label="Components"
+            count={counts.components}
+            href="/components"
+            icon={<Puzzle className="h-5 w-5" />}
+            className="sm:col-span-2"
+          />
+        </div>
       </div>
     </div>
   )
@@ -147,15 +145,17 @@ function StatusCard({
   count,
   href,
   icon,
+  className = "",
 }: {
   label: string
   count: number
   href: string
   icon: React.ReactNode
+  className?: string
 }) {
   return (
-    <Link href={href} className="group">
-      <Card className="transition-colors group-hover:border-primary/40">
+    <Link href={href} className={`group ${className}`}>
+      <Card className="h-full transition-colors group-hover:border-primary/50">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
             {label}
@@ -163,7 +163,7 @@ function StatusCard({
           <span className="text-muted-foreground">{icon}</span>
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold text-card-foreground">{count}</p>
+          <p className="text-3xl font-semibold tabular-nums text-card-foreground">{count}</p>
           <p className="text-xs text-muted-foreground mt-1">saved locally</p>
         </CardContent>
       </Card>

@@ -167,7 +167,7 @@ export default function PlansPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {plans.map((plan) => {
               const isActive = plan.id === activePlanId
               const lastRun = plan.last_run_at ?? null

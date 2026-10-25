@@ -14,25 +14,25 @@ body {
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 220 20% 10%;
+    --background: 0 0% 100%;
+    --foreground: 222 25% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
+    --card-foreground: 222 25% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 10%;
-    --primary: 214 80% 52%;
+    --popover-foreground: 222 25% 11%;
+    --primary: 214 82% 48%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 15% 93%;
-    --secondary-foreground: 220 20% 15%;
-    --muted: 210 15% 95%;
-    --muted-foreground: 220 10% 46%;
-    --accent: 168 60% 42%;
-    --accent-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 25% 14%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 40%;
+    --accent: 220 14% 95%;
+    --accent-foreground: 222 25% 12%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 20% 88%;
-    --input: 214 20% 88%;
-    --ring: 214 80% 52%;
+    --border: 220 13% 88%;
+    --input: 220 9% 58%;
+    --ring: 214 82% 48%;
     --chart-1: 214 80% 52%;
     --chart-2: 168 60% 42%;
     --chart-3: 35 92% 53%;
@@ -61,8 +61,8 @@ body {
     --secondary-foreground: 210 15% 92%;
     --muted: 220 15% 14%;
     --muted-foreground: 210 10% 55%;
-    --accent: 168 60% 42%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 220 15% 18%;
+    --accent-foreground: 210 15% 95%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
     --border: 220 15% 18%;
@@ -90,5 +90,19 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* Dense data: keep digits aligned column-to-column. */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
