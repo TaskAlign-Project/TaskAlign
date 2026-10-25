@@ -81,6 +81,9 @@ export default function ComponentsPage() {
   useEffect(() => {
     const id = getActivePlanId()
     setPlanId(id)
+    // No plan means nothing to load. Without this, "loading" never ends and the
+    // page stays blank instead of showing the "no plan selected" message.
+    if (!id) setLoading(false)
   }, [])
 
   useEffect(() => {
