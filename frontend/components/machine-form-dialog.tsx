@@ -99,7 +99,9 @@ export function MachineFormDialog({
           <Label htmlFor="machine-id">ID</Label>
             <Input
               id="machine-id"
-              value={form.id}
+              // Edit shows the machine's code (e.g. "M105G"), like the table does.
+              // form.id stays the database UUID, which the save still needs.
+              value={isEdit ? form.code || form.id : form.id}
               disabled={isEdit}
               onChange={(e) => setForm({ ...form, id: e.target.value, code: e.target.value })}
             />
