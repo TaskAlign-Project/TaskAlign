@@ -39,6 +39,7 @@ import { componentsApi, moldsApi, plansApi } from "@/lib/api"
 import type { Component, Mold, Plan } from "@/lib/types"
 import { toast } from "sonner"
 import { getActivePlanId } from "@/lib/storage"
+import { getComponentStatus } from "@/lib/production-progress"
 import { resolveMoldName } from "@/lib/mold-utils"
 
 export default function ComponentsPage() {
@@ -52,7 +53,7 @@ export default function ComponentsPage() {
   const [loading, setLoading] = useState(true)
 
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | "done" | "undone">("all")
+  const [statusFilter, setStatusFilter] = useState<"all" | "done" | "in_progress" | "undone">("all")
   const [startDateFilter, setStartDateFilter] = useState("")
   const [dueDateFilter, setDueDateFilter] = useState("")
 
@@ -156,6 +157,8 @@ export default function ComponentsPage() {
 
     if (statusFilter === "done") {
       result = result.filter((c) => (c.finished ?? 0) >= c.quantity && c.quantity > 0)
+    } else if (statusFilter === "in_progress") {
+      result = result.filter((c) => getComponentStatus(c) === "in_progress")
     } else if (statusFilter === "undone") {
       result = result.filter((c) => (c.finished ?? 0) < c.quantity || c.quantity === 0)
     }
@@ -227,6 +230,7 @@ export default function ComponentsPage() {
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="done">Done</SelectItem>
+                <SelectItem value="in_progress">In progress</SelectItem>
                 <SelectItem value="undone">Undone</SelectItem>
               </SelectContent>
             </Select>
