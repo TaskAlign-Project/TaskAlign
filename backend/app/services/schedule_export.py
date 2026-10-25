@@ -27,6 +27,7 @@ FIRST_DAY_COL = len(HEADERS) + 1  # day 1 lands here
 
 ROW_TITLE = 2
 ROW_SUBTITLE = 3
+ROW_FILTER = 4   # only used for filtered exports
 ROW_TOTAL = 5
 ROW_DAYNUM = 6
 ROW_DATE = 7
@@ -62,11 +63,39 @@ def build_schedule_workbook(
     components: Sequence[Any],
     run: Any = None,
     revision: str = "0",
+    *,
+    all_assignments: Optional[Sequence[Any]] = None,
+    day_range: Optional[tuple[Optional[int], Optional[int]]] = None,
+    filter_description: Optional[str] = None,
 ) -> Workbook:
-    """Render one run as a workbook. Returns an openpyxl Workbook."""
+    """Render one run as a workbook. Returns an openpyxl Workbook.
+
+    By default every component and every day of the plan is written. For a
+    filtered export (the Output page's current view):
+
+    * ``assignments`` is just the subset the user is looking at, and only
+      components that appear in it get a row (numbered 1..N);
+    * ``day_range`` limits the day columns to ``(first_day, last_day)``;
+    * ``all_assignments`` is the whole run, so Diff still reports what is left
+      unscheduled in the run rather than what is left *outside this view*;
+    * ``filter_description`` is printed under the title so a reader knows the
+      sheet is a slice.
+    """
     month_days = int(getattr(plan, "month_days", 30) or 30)
-    last_day_col = FIRST_DAY_COL + month_days - 1
+    first_day, last_day = 1, month_days
+    if day_range is not None:
+        lo, hi = day_range
+        if lo is not None:
+            first_day = max(first_day, int(lo))
+        if hi is not None:
+            last_day = min(last_day, int(hi))
+    shown_days = list(range(first_day, last_day + 1))
+    if not shown_days:
+        raise ValueError("The selected day range contains no days of this plan.")
+    filtered = all_assignments is not None
+    last_day_col = FIRST_DAY_COL + len(shown_days) - 1
     last_col_letter = get_column_letter(last_day_col)
+    shown_day_set = set(shown_days)
 
     try:
         anchor = date.fromisoformat(str(plan.current_date))
@@ -78,19 +107,33 @@ def build_schedule_workbook(
     machines_used: dict[str, set[str]] = defaultdict(set)
     molds_used: dict[str, set[str]] = defaultdict(set)
 
+    present_ids: set[str] = {
+        str(_get(a, "component_id")) for a in assignments or [] if _get(a, "component_id")
+    }
+
     for a in assignments or []:
         if _get(a, "task_type") != "PRODUCE":
             continue
         cid = _get(a, "component_id")
         qty = int(_get(a, "produced_qty") or 0)
         day = int(_get(a, "day") or 0)
-        if not cid or qty <= 0 or day <= 0:
+        if not cid or qty <= 0 or day <= 0 or day not in shown_day_set:
             continue
         produced[cid][day] += qty
         if _get(a, "machine_id"):
             machines_used[cid].add(str(_get(a, "machine_id")))
         if _get(a, "mold_id"):
             molds_used[cid].add(str(_get(a, "mold_id")))
+
+    run_total: dict[str, int] = defaultdict(int)
+    if filtered:
+        for a in all_assignments or []:
+            if _get(a, "task_type") != "PRODUCE":
+                continue
+            cid = _get(a, "component_id")
+            qty = int(_get(a, "produced_qty") or 0)
+            if cid and qty > 0 and int(_get(a, "day") or 0) > 0:
+                run_total[str(cid)] += qty
 
     wb = Workbook()
     ws = wb.active
@@ -109,6 +152,9 @@ def build_schedule_workbook(
     ).font = Font(name=FONT, size=11, bold=True)
     ws.cell(ROW_SUBTITLE, last_day_col - 2, f"REVISION : {revision}").font = Font(name=FONT, size=10)
 
+    if filter_description:
+        ws.cell(ROW_FILTER, 3, filter_description).font = Font(name=FONT, size=9, italic=True)
+
     if run is not None and _get(run, "run_name"):
         ws.cell(ROW_SUBTITLE, 1, str(_get(run, "run_name"))).font = Font(
             name=FONT, size=9, italic=True
@@ -119,10 +165,9 @@ def build_schedule_workbook(
     ws.cell(ROW_DAYNUM, len(HEADERS), "Day").font = Font(name=FONT, size=9, bold=True)
     ws.cell(ROW_DATE, len(HEADERS), "Date").font = Font(name=FONT, size=9, bold=True)
 
-    for offset in range(month_days):
+    for offset, day_no in enumerate(shown_days):
         col = FIRST_DAY_COL + offset
-        day_no = offset + 1
-        day_date = anchor + timedelta(days=offset)
+        day_date = anchor + timedelta(days=day_no - 1)
 
         c = ws.cell(ROW_DAYNUM, col, day_no)
         c.font = Font(name=FONT, size=9, bold=True)
@@ -145,9 +190,9 @@ def build_schedule_workbook(
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         ws.column_dimensions[get_column_letter(idx)].width = width
 
-    for offset in range(month_days):
+    for offset, day_no in enumerate(shown_days):
         col = FIRST_DAY_COL + offset
-        c = ws.cell(ROW_HEADER, col, offset + 1)
+        c = ws.cell(ROW_HEADER, col, day_no)
         c.font = Font(name=FONT, size=9, bold=True)
         c.fill = HEADER_FILL
         c.border = BORDER
@@ -156,7 +201,12 @@ def build_schedule_workbook(
 
     # ---- data rows --------------------------------------------------------
     row = ROW_FIRST_DATA
-    for item_no, comp in enumerate(components, start=1):
+    rows_to_write = (
+        [c for c in components if str(_get(c, "component_id") or "") in present_ids]
+        if filtered
+        else components
+    )
+    for item_no, comp in enumerate(rows_to_write, start=1):
         cid = str(_get(comp, "component_id") or "")
         code, order = _split_component_id(cid)
         quantity = int(_get(comp, "quantity") or 0)
@@ -183,13 +233,18 @@ def build_schedule_workbook(
 
         # Diff = ordered - already finished - scheduled this run. A formula, so
         # the sheet stays correct if someone edits a day cell by hand.
+        # In a filtered export, production that falls outside the view (other
+        # days or machines) is subtracted as a constant so Diff keeps meaning
+        # "still unscheduled in this run", not "not shown on this sheet".
+        outside_view = max(run_total.get(cid, 0) - sum(by_day.values()), 0) if filtered else 0
         ws.cell(row, 7).value = (
             f"=E{row}-F{row}-SUM({get_column_letter(FIRST_DAY_COL)}{row}:{last_col_letter}{row})"
+            + (f"-{outside_view}" if outside_view else "")
         )
 
-        for offset in range(month_days):
+        for offset, day_no in enumerate(shown_days):
             col = FIRST_DAY_COL + offset
-            qty = by_day.get(offset + 1)
+            qty = by_day.get(day_no)
             c = ws.cell(row, col, qty if qty else None)
             c.font = Font(name=FONT, size=9)
             c.border = BORDER
@@ -206,7 +261,7 @@ def build_schedule_workbook(
 
     # ---- totals -----------------------------------------------------------
     if last_data_row >= ROW_FIRST_DATA:
-        for offset in range(month_days):
+        for offset in range(len(shown_days)):
             col = FIRST_DAY_COL + offset
             letter = get_column_letter(col)
             c = ws.cell(
@@ -247,13 +302,17 @@ def export_schedule_xlsx(
     components: Sequence[Any],
     run: Any = None,
     revision: str = "0",
+    **view: Any,
 ) -> bytes:
+    """``view`` carries the optional filtered-export arguments of
+    build_schedule_workbook (all_assignments, day_range, filter_description)."""
     return workbook_to_bytes(
-        build_schedule_workbook(plan, assignments, components, run=run, revision=revision)
+        build_schedule_workbook(plan, assignments, components, run=run, revision=revision, **view)
     )
 
 
-def suggested_filename(plan: Any, run: Any = None) -> str:
+def suggested_filename(plan: Any, run: Any = None, filtered: bool = False) -> str:
     name = str(getattr(plan, "name", "plan")).strip().replace(" ", "_") or "plan"
     stamp = datetime.now().strftime("%Y%m%d")
-    return f"production_schedule_{name}_{stamp}.xlsx"
+    suffix = "_filtered" if filtered else ""
+    return f"production_schedule_{name}_{stamp}{suffix}.xlsx"

@@ -60,6 +60,9 @@ import {
   getTimelineSearchEmptyMessage,
   resolveScheduleStartDate,
   formatRunDate,
+  getAssignmentIndices,
+  describeExportFilters,
+  downloadBlob,
 } from "@/lib/schedule-utils"
 import { formatDayAsDate } from "@/lib/gantt"
 
@@ -343,6 +346,64 @@ function OutputContent({
     return arr
   }, [data.assignments, filterDayStart, filterDayEnd, filterMachine, filterMachineGroup, machineGroupMap, activeTypes, searchQuery, components])
 
+  // ---- Export Excel: hand the server exactly what the filters leave on screen ----
+  const [exporting, setExporting] = useState(false)
+  const filtersActive =
+    filterDayStart !== "all" ||
+    filterDayEnd !== "all" ||
+    filterMachine !== "all" ||
+    filterMachineGroup !== "all" ||
+    activeTypes.size !== TASK_TYPES.length ||
+    searchQuery.trim() !== ""
+
+  async function handleExport() {
+    if (!currentRun?.id) return
+
+    // No filters: the plain full-run download, exactly as before.
+    if (!filtersActive) {
+      window.location.href = runsApi.exportUrl(plan.id, currentRun.id)
+      return
+    }
+
+    if (filtered.length === 0) {
+      toast.error(`Nothing to export. ${getTimelineSearchEmptyMessage(searchQuery, components)}`)
+      return
+    }
+
+    setExporting(true)
+    try {
+      const machineName = assignmentMachines.find(([id]) => id === filterMachine)?.[1]
+      const { blob, filename } = await runsApi.exportFiltered(plan.id, currentRun.id, {
+        assignment_indices: getAssignmentIndices(data.assignments, filtered),
+        day_start: filterDayStart !== "all" ? Number(filterDayStart) : null,
+        day_end: filterDayEnd !== "all" ? Number(filterDayEnd) : null,
+        description: describeExportFilters({
+          dayStart: filterDayStart !== "all" ? formatDayAsDate(Number(filterDayStart), startDate) : undefined,
+          dayEnd: filterDayEnd !== "all" ? formatDayAsDate(Number(filterDayEnd), startDate) : undefined,
+          machineGroup:
+            filterMachineGroup !== "all"
+              ? filterMachineGroup.charAt(0).toUpperCase() + filterMachineGroup.slice(1)
+              : undefined,
+          machine:
+            filterMachine !== "all"
+              ? machineName ? `${filterMachine} - ${machineName}` : filterMachine
+              : undefined,
+          taskTypes:
+            activeTypes.size !== TASK_TYPES.length
+              ? TASK_TYPES.filter((t) => activeTypes.has(t)).map((t) => TASK_COLORS[t].label)
+              : undefined,
+          search: searchQuery,
+        }),
+      })
+      downloadBlob(blob, filename)
+      toast.success("Exported the filtered view")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed")
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const timelineGrouped = useMemo(
     () => groupByMachineThenDay(filtered),
     [filtered]
@@ -429,10 +490,8 @@ function OutputContent({
           <Button
             variant="outline"
             size="sm"
-            disabled={!currentRun?.id}
-            onClick={() => {
-              window.location.href = runsApi.exportUrl(plan.id, currentRun.id)
-            }}
+            disabled={!currentRun?.id || exporting}
+            onClick={handleExport}
           >
             <Download className="mr-2 h-3.5 w-3.5" />
             Export Excel

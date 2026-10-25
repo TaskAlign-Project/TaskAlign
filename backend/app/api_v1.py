@@ -703,19 +703,12 @@ def import_client_format(
     return result
 
 
-@router.get("/plans/{plan_id}/runs/{run_id}/export.xlsx")
-def export_run_xlsx(
-    plan_id: str,
-    run_id: str,
-    revision: str = Query("0", description="Revision number shown in the title block."),
-    db: Session = Depends(get_db),
-):
-    """Download a completed run as the client's daily production-plan workbook.
-    """
+def _load_run_for_export(db: Session, plan_id: str, run_id: str):
+    """Shared by the full and the filtered export: fetch plan, run and components."""
     plan = db.query(db_models.Plan).filter(db_models.Plan.id == plan_id).first()
     if plan is None:
         raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
- 
+
     run = (
         db.query(db_models.Run)
         .filter(db_models.Run.id == run_id, db_models.Run.plan_id == plan_id)
@@ -728,14 +721,30 @@ def export_run_xlsx(
             status_code=409,
             detail="This run has no assignments to export (it may have failed).",
         )
- 
+
     # Ordered by insertion so "Item" numbering matches the components page.
     components = (
         db.query(db_models.Component)
         .filter(db_models.Component.plan_id == plan_id)
         .all()
     )
- 
+    return plan, run, components
+
+
+_XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.get("/plans/{plan_id}/runs/{run_id}/export.xlsx")
+def export_run_xlsx(
+    plan_id: str,
+    run_id: str,
+    revision: str = Query("0", description="Revision number shown in the title block."),
+    db: Session = Depends(get_db),
+):
+    """Download a completed run as the client's daily production-plan workbook.
+    """
+    plan, run, components = _load_run_for_export(db, plan_id, run_id)
+
     content = export_schedule_xlsx(
         plan=plan,
         assignments=run.assignments,
@@ -744,9 +753,69 @@ def export_run_xlsx(
         revision=revision,
     )
     filename = suggested_filename(plan, run)
- 
+
     return StreamingResponse(
         io.BytesIO(content),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class ExportFilteredRequest(PydanticBase):
+    # Positions in run.assignments of the tasks the Output page is showing.
+    # The page applies its own filters (day range, machine, group, task type,
+    # search); sending the result rather than re-implementing those filters
+    # here guarantees the sheet matches the screen.
+    assignment_indices: List[int]
+    day_start: Optional[int] = None
+    day_end: Optional[int] = None
+    description: Optional[str] = None
+
+
+@router.post("/plans/{plan_id}/runs/{run_id}/export.xlsx")
+def export_run_xlsx_filtered(
+    plan_id: str,
+    run_id: str,
+    body: ExportFilteredRequest,
+    revision: str = Query("0", description="Revision number shown in the title block."),
+    db: Session = Depends(get_db),
+):
+    """Download only the part of a run the Output page is currently showing."""
+    plan, run, components = _load_run_for_export(db, plan_id, run_id)
+
+    all_assignments = list(run.assignments)
+    selected = [
+        all_assignments[i]
+        for i in sorted({i for i in body.assignment_indices if 0 <= i < len(all_assignments)})
+    ]
+    if not selected:
+        raise HTTPException(
+            status_code=409,
+            detail="No assignments match the current filters, so there is nothing to export.",
+        )
+
+    # Built here, not taken from the client, so user-typed search text can never
+    # start a cell with "=" and be read by Excel as a formula.
+    note = (body.description or "").strip()[:500]
+    description = f"FILTERED VIEW - {note}" if note else "FILTERED VIEW"
+
+    try:
+        content = export_schedule_xlsx(
+            plan=plan,
+            assignments=selected,
+            components=components,
+            run=run,
+            revision=revision,
+            all_assignments=all_assignments,
+            day_range=(body.day_start, body.day_end),
+            filter_description=description,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    filename = suggested_filename(plan, run, filtered=True)
+
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=_XLSX_MEDIA_TYPE,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

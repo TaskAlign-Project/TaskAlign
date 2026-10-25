@@ -151,6 +151,33 @@ export const runsApi = {
   run: (planId: string) => apiFetch<PlanRun>(`/plans/${planId}/run`, { method: "POST" }),
   exportUrl: (planId: string, runId: string) =>
     `${API_V1}/plans/${planId}/runs/${runId}/export.xlsx`,
+  /** Export only what the Output page is currently showing. */
+  exportFiltered: async (
+    planId: string,
+    runId: string,
+    body: ExportFilteredBody
+  ): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetch(`${API_V1}/plans/${planId}/runs/${runId}/export.xlsx`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || `Server error: ${res.status}`)
+    }
+    const disposition = res.headers.get("Content-Disposition") ?? ""
+    const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? "production_schedule_filtered.xlsx"
+    return { blob: await res.blob(), filename }
+  },
+}
+
+export interface ExportFilteredBody {
+  /** Positions in the run's assignments list of the tasks on screen. */
+  assignment_indices: number[]
+  day_start: number | null
+  day_end: number | null
+  description: string
 }
 
 export interface ClientImportResult {

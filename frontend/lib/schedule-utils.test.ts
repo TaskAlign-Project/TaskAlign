@@ -1,6 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
+import type { Assignment } from "./types.ts"
+
 import {
   buildAssignmentsWorkbook,
   filterAssignmentsBySearch,
@@ -8,6 +10,8 @@ import {
   getTimelineSearchEmptyMessage,
   formatRunDate,
   resolveScheduleStartDate,
+  getAssignmentIndices,
+  describeExportFilters,
 } from "./schedule-utils.ts"
 
 
@@ -195,4 +199,84 @@ test("completed C1 is hidden even when an older run still contains C1", () => {
     filterTimelineAssignments(historicalAssignments, "c1", components),
     []
   )
+})
+
+
+// ---- Export Excel: send the server what the filters leave on screen ----
+
+function makeTask(overrides: Partial<Assignment>): Assignment {
+  return {
+    day: 1,
+    machine_id: "M01",
+    machine_name: "Machine 1",
+    sequence_in_day: 1,
+    task_type: "PRODUCE",
+    start_hour_clock: 0,
+    end_hour_clock: 1,
+    used_hours: 1,
+    ...overrides,
+  }
+}
+
+test("getAssignmentIndices returns the positions of the filtered items in the full run", () => {
+  const all = [
+    makeTask({ day: 1, machine_id: "M01" }),
+    makeTask({ day: 2, machine_id: "M02" }),
+    makeTask({ day: 3, machine_id: "M01" }),
+    makeTask({ day: 4, machine_id: "M03" }),
+  ]
+  const subset = all.filter((a) => a.machine_id === "M01")
+
+  assert.deepEqual(getAssignmentIndices(all, subset), [0, 2])
+})
+
+test("getAssignmentIndices ignores the order of the subset (the page sorts its copy)", () => {
+  const all = [makeTask({ day: 1 }), makeTask({ day: 2 }), makeTask({ day: 3 })]
+  const sortedDescending = [...all].sort((a, b) => b.day - a.day)
+
+  assert.deepEqual(getAssignmentIndices(all, sortedDescending), [0, 1, 2])
+})
+
+test("getAssignmentIndices is empty when nothing matches", () => {
+  const all = [makeTask({ day: 1 })]
+  assert.deepEqual(getAssignmentIndices(all, []), [])
+})
+
+test("the page's own filters keep object identity, so indices map back to the run", () => {
+  // The Output page filters, searches and sorts a *copy*; the export relies on
+  // those steps handing back the original assignment objects.
+  const all = [
+    makeTask({ component_id: "C1", component_name: "Lid", mold_id: "M-1" }),
+    makeTask({ component_id: "C2", component_name: "Body", mold_id: "M-2" }),
+    makeTask({ component_id: "C10", component_name: "Hinge", mold_id: "M-3" }),
+  ]
+  const searched = filterAssignmentsBySearch(all, "C1")
+  const sortedCopy = [...searched].sort((a, b) => a.day - b.day)
+
+  assert.deepEqual(getAssignmentIndices(all, sortedCopy), [0])
+  assert.equal(sortedCopy[0], all[0])
+})
+
+test("describeExportFilters lists only the filters in force", () => {
+  assert.equal(describeExportFilters({}), "")
+  assert.equal(
+    describeExportFilters({
+      dayStart: "5 Nov",
+      dayEnd: "10 Nov",
+      machineGroup: "Large",
+      machine: "M121G - Nanrong",
+      taskTypes: ["Production"],
+      search: " C1 ",
+    }),
+    'Dates: 5 Nov to 10 Nov | Machine group: Large | Machine: M121G - Nanrong | Task types: Production | Search: "C1"'
+  )
+})
+
+test("describeExportFilters handles a half-open date range", () => {
+  assert.equal(describeExportFilters({ dayStart: "5 Nov" }), "Dates: 5 Nov to end")
+  assert.equal(describeExportFilters({ dayEnd: "10 Nov" }), "Dates: start to 10 Nov")
+})
+
+test("describeExportFilters ignores a blank search", () => {
+  assert.equal(describeExportFilters({ search: "   " }), "")
 })

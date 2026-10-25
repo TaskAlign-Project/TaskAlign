@@ -325,6 +325,64 @@ export function downloadXLSX(
   XLSX.writeFile(buildAssignmentsWorkbook(assignments), outputName)
 }
 
+// ---- Filtered export (Output page "Export Excel") ----
+
+/**
+ * Positions, within `all`, of the items that are in `subset`.
+ *
+ * The Output page filters and re-sorts a copy of the run's assignments; the
+ * server only needs to know *which* of the run's own assignments are on screen.
+ * Items are matched by identity, so the filtered/sorted array must hold the
+ * same objects as `all` (Array.filter and sort on a copy both do).
+ */
+export function getAssignmentIndices<T>(all: readonly T[], subset: readonly T[]): number[] {
+  const wanted = new Set<T>(subset)
+  const indices: number[] = []
+  all.forEach((item, index) => {
+    if (wanted.has(item)) indices.push(index)
+  })
+  return indices
+}
+
+export interface ExportFilterSummary {
+  /** Already formatted, e.g. "5 Nov". Omit when the range is not narrowed. */
+  dayStart?: string
+  dayEnd?: string
+  /** e.g. "M121G - Nanrong" */
+  machine?: string
+  machineGroup?: string
+  /** Labels of the task types that are switched on; omit when all are on. */
+  taskTypes?: string[]
+  search?: string
+}
+
+/**
+ * One line naming the filters in force, printed on the exported sheet so
+ * whoever opens it knows it is a slice. Only active filters are listed.
+ */
+export function describeExportFilters(f: ExportFilterSummary): string {
+  const parts: string[] = []
+  if (f.dayStart || f.dayEnd) parts.push(`Dates: ${f.dayStart ?? "start"} to ${f.dayEnd ?? "end"}`)
+  if (f.machineGroup) parts.push(`Machine group: ${f.machineGroup}`)
+  if (f.machine) parts.push(`Machine: ${f.machine}`)
+  if (f.taskTypes && f.taskTypes.length > 0) parts.push(`Task types: ${f.taskTypes.join(", ")}`)
+  const search = f.search?.trim()
+  if (search) parts.push(`Search: "${search}"`)
+  return parts.join(" | ")
+}
+
+/** Save a Blob the browser already holds (e.g. a fetched .xlsx) to disk. */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 // ---- Demo data ----
 export const DEMO_RESULT: ScheduleResponse = {
   "assignments": [
