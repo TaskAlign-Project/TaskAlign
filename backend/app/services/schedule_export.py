@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
@@ -57,6 +57,32 @@ def _split_component_id(component_id: str) -> tuple[str, str]:
     return (material or text), order
 
 
+def infer_run_start(assignments: Optional[Iterable[Any]]) -> Optional[date]:
+    """The calendar date of day 1, read from the run's own tasks.
+
+    Every saved task has both a day number and the date it was scheduled on, so
+    ``date - (day - 1)`` is the start date the run was generated with. The plan's
+    ``current_date`` is not a substitute: it changes whenever the setup is edited,
+    which would re-date every older run. The most common answer wins so a few
+    tasks whose date went stale after a manual day change cannot skew it.
+    """
+    votes: Counter[date] = Counter()
+    for a in assignments or []:
+        day = int(_get(a, "day") or 0)
+        if day < 1:
+            continue
+        raw = str(_get(a, "date") or "")[:10] or str(_get(a, "start_datetime") or "")[:10]
+        try:
+            scheduled_on = date.fromisoformat(raw)
+        except ValueError:
+            continue
+        votes[scheduled_on - timedelta(days=day - 1)] += 1
+    if not votes:
+        return None
+    top = max(votes.values())
+    return min(d for d, n in votes.items() if n == top)
+
+
 def build_schedule_workbook(
     plan: Any,
     assignments: Sequence[Any],
@@ -81,7 +107,13 @@ def build_schedule_workbook(
     * ``filter_description`` is printed under the title so a reader knows the
       sheet is a slice.
     """
-    month_days = int(getattr(plan, "month_days", 30) or 30)
+    run_tasks = all_assignments if all_assignments is not None else assignments
+    # Never fewer columns than the run actually uses: the plan's month_days may
+    # have been shortened since this run was generated.
+    month_days = max(
+        int(getattr(plan, "month_days", 30) or 30),
+        max((int(_get(a, "day") or 0) for a in run_tasks or []), default=0),
+    )
     first_day, last_day = 1, month_days
     if day_range is not None:
         lo, hi = day_range
@@ -97,10 +129,12 @@ def build_schedule_workbook(
     last_col_letter = get_column_letter(last_day_col)
     shown_day_set = set(shown_days)
 
-    try:
-        anchor = date.fromisoformat(str(plan.current_date))
-    except (TypeError, ValueError):
-        anchor = date.today()
+    anchor = infer_run_start(run_tasks)
+    if anchor is None:
+        try:
+            anchor = date.fromisoformat(str(plan.current_date))
+        except (TypeError, ValueError):
+            anchor = date.today()
 
     # produced[component_id][day] = pieces
     produced: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))

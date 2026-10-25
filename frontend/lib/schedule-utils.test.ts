@@ -12,6 +12,7 @@ import {
   resolveScheduleStartDate,
   getAssignmentIndices,
   describeExportFilters,
+  inferRunStartDate,
 } from "./schedule-utils.ts"
 
 
@@ -279,4 +280,78 @@ test("describeExportFilters handles a half-open date range", () => {
 
 test("describeExportFilters ignores a blank search", () => {
   assert.equal(describeExportFilters({ search: "   " }), "")
+})
+
+
+// ---- A run keeps the start date it was generated with ----
+
+test("a run shows its own start date, not the plan's newer one", () => {
+  // Run #1 was generated starting 1 Nov; the plan has since been moved to 2 Nov.
+  const run = {
+    assignments: [
+      { day: 1, date: "2025-11-01" },
+      { day: 2, date: "2025-11-02" },
+      { day: 5, date: "2025-11-05" },
+    ],
+  }
+
+  assert.equal(resolveScheduleStartDate(run, { current_date: "2025-11-02" }), "2025-11-01")
+})
+
+test("each run resolves to its own start date", () => {
+  const plan = { current_date: "2025-11-02" }
+  const run1 = { assignments: [{ day: 1, date: "2025-11-01" }, { day: 3, date: "2025-11-03" }] }
+  const run2 = { assignments: [{ day: 1, date: "2025-11-02" }, { day: 3, date: "2025-11-04" }] }
+
+  assert.equal(resolveScheduleStartDate(run1, plan), "2025-11-01")
+  assert.equal(resolveScheduleStartDate(run2, plan), "2025-11-02")
+})
+
+test("a run that starts mid-run in the data still resolves to day 1", () => {
+  // Day 1 may have no task at all (e.g. a weekend); day 3 alone is enough.
+  assert.equal(inferRunStartDate([{ day: 3, date: "2025-11-05" }]), "2025-11-03")
+})
+
+test("start date inference crosses month and year boundaries", () => {
+  assert.equal(inferRunStartDate([{ day: 5, date: "2026-01-02" }]), "2025-12-29")
+  assert.equal(inferRunStartDate([{ day: 3, date: "2026-03-01" }]), "2026-02-27")
+})
+
+test("a few stale dates do not change the answer (majority wins)", () => {
+  const tasks = [
+    { day: 1, date: "2025-11-01" },
+    { day: 2, date: "2025-11-02" },
+    { day: 3, date: "2025-11-03" },
+    { day: 9, date: "2025-11-04" }, // moved by hand; its date was never updated
+  ]
+
+  assert.equal(inferRunStartDate(tasks), "2025-11-01")
+})
+
+test("falls back to start_datetime when a task has no date", () => {
+  assert.equal(
+    inferRunStartDate([{ day: 2, start_datetime: "2025-11-02T05:00:00" }]),
+    "2025-11-01"
+  )
+})
+
+test("tasks without a usable date are ignored, then the plan date is used", () => {
+  const run = { assignments: [{ day: 1, date: "" }, { day: 2 }, { day: 0, date: "2025-11-01" }] }
+
+  assert.equal(inferRunStartDate(run.assignments), undefined)
+  assert.equal(resolveScheduleStartDate(run, { current_date: "2025-11-02" }), "2025-11-02")
+})
+
+test("an explicit snapshot on the run still takes priority", () => {
+  const run = {
+    request_snapshot: { current_date: "2025-10-15" },
+    assignments: [{ day: 1, date: "2025-11-01" }],
+  }
+
+  assert.equal(resolveScheduleStartDate(run, { current_date: "2025-11-02" }), "2025-10-15")
+})
+
+test("a run with no tasks falls back to the plan date", () => {
+  assert.equal(resolveScheduleStartDate({}, { current_date: "2025-11-02" }), "2025-11-02")
+  assert.equal(resolveScheduleStartDate({ assignments: [] }, { current_date: "2025-11-02" }), "2025-11-02")
 })

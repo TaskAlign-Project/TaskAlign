@@ -19,12 +19,54 @@ export function storeResult(data: ScheduleResponse): void {
   localStorage.setItem(SCHEDULE_RESULT_KEY, JSON.stringify(data))
 }
 
+type DatedTask = { day?: number; date?: string; start_datetime?: string }
+
+const startDateCache = new WeakMap<object, string | undefined>()
+
+/**
+ * The calendar date of "day 1" in a run, read from the run's own tasks.
+ *
+ * Every saved task carries both its day number and the date it was scheduled
+ * on, so `date - (day - 1)` is the start date the run was actually generated
+ * with -- unlike the plan's start date, which changes every time the setup is
+ * edited. The most common answer wins, so a few tasks whose date went stale
+ * after a manual day change cannot skew it. Returns undefined when no task
+ * carries a usable date.
+ */
+export function inferRunStartDate(assignments: readonly DatedTask[] | undefined): string | undefined {
+  if (!assignments || assignments.length === 0) return undefined
+  if (startDateCache.has(assignments)) return startDateCache.get(assignments)
+
+  const votes = new Map<string, number>()
+  for (const task of assignments) {
+    const iso = task.date || task.start_datetime?.split("T")[0] || ""
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || !task.day || task.day < 1) continue
+    const [y, m, d] = iso.split("-").map(Number)
+    const start = new Date(Date.UTC(y, m - 1, d - (task.day - 1)))
+    if (Number.isNaN(start.getTime())) continue
+    const key = start.toISOString().slice(0, 10)
+    votes.set(key, (votes.get(key) ?? 0) + 1)
+  }
+
+  let best: string | undefined
+  let bestVotes = 0
+  for (const [key, count] of votes) {
+    if (count > bestVotes || (count === bestVotes && best !== undefined && key < best)) {
+      best = key
+      bestVotes = count
+    }
+  }
+  startDateCache.set(assignments, best)
+  return best
+}
+
 export function resolveScheduleStartDate(
-  run: { request_snapshot?: { current_date?: string } },
+  run: { request_snapshot?: { current_date?: string }; assignments?: readonly DatedTask[] },
   plan: { current_date?: string; setup?: { current_date?: string } }
 ): string {
   return (
     run.request_snapshot?.current_date ??
+    inferRunStartDate(run.assignments) ??
     plan.current_date ??
     plan.setup?.current_date ??
     "2026-01-01"

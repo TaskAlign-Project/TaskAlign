@@ -1,5 +1,6 @@
 import asyncio
 import io
+from datetime import date
 from types import SimpleNamespace
 
 import openpyxl
@@ -17,6 +18,8 @@ from app.database import Base
 from app.models import db_models
 from app.services.schedule_export import (
     FIRST_DAY_COL,
+    ROW_SUBTITLE,
+    infer_run_start,
     ROW_DATE,
     ROW_DAYNUM,
     ROW_FILTER,
@@ -250,3 +253,71 @@ def test_the_full_download_is_unaffected_by_the_filtered_endpoint(db):
     assert len(_data_rows(ws)) == 4
     assert _day_headers(ws) == list(range(1, 9))
     assert ws.cell(ROW_FILTER, 3).value is None
+
+
+# --- a run keeps the start date it was generated with ----------------------------
+
+def _dated(start: date, tasks=ASSIGNMENTS):
+    """The sample tasks, each stamped with the date its day falls on."""
+    from datetime import timedelta
+    return [dict(t, date=(start + timedelta(days=t["day"] - 1)).isoformat()) for t in tasks]
+
+
+def test_infer_run_start_reads_day_one_from_the_tasks():
+    assert infer_run_start(_dated(date(2025, 11, 1))) == date(2025, 11, 1)
+
+
+def test_infer_run_start_works_even_if_day_one_has_no_task():
+    only_day_three = [t for t in _dated(date(2025, 11, 1)) if t["day"] == 3]
+    assert infer_run_start(only_day_three) == date(2025, 11, 1)
+
+
+def test_infer_run_start_crosses_month_and_year_boundaries():
+    assert infer_run_start([{"day": 5, "date": "2026-01-02"}]) == date(2025, 12, 29)
+
+
+def test_infer_run_start_majority_beats_a_stale_date():
+    tasks = _dated(date(2025, 11, 1)) + [{"day": 9, "date": "2025-11-04"}]   # moved by hand
+    assert infer_run_start(tasks) == date(2025, 11, 1)
+
+
+def test_infer_run_start_falls_back_to_start_datetime_and_ignores_junk():
+    assert infer_run_start([{"day": 2, "start_datetime": "2025-11-02T05:00:00"}]) == date(2025, 11, 1)
+    assert infer_run_start([{"day": 1, "date": ""}, {"day": 0, "date": "2025-11-01"}, {"day": 2, "date": "nope"}]) is None
+    assert infer_run_start(None) is None
+
+
+def test_export_dates_follow_the_run_not_the_plans_current_start():
+    # Run #1 started 1 Nov; the plan has since been moved to 2 Nov.
+    plan = SimpleNamespace(name="Nov 2025", month_days=8, current_date="2025-11-02")
+    ws = _sheet(build_schedule_workbook(plan, _dated(date(2025, 11, 1)), COMPONENTS))
+    assert ws.cell(ROW_DATE, FIRST_DAY_COL).value == "01/11"
+    assert ws.cell(ROW_DATE, FIRST_DAY_COL + 1).value == "02/11"
+
+
+def test_export_title_month_follows_the_run_too():
+    plan = SimpleNamespace(name="p", month_days=8, current_date="2025-11-02")
+    ws = _sheet(build_schedule_workbook(plan, _dated(date(2025, 10, 30)), COMPONENTS))
+    assert ws.cell(ROW_SUBTITLE, 3).value.endswith("OCTOBER 2025")
+
+
+def test_filtered_export_dates_follow_the_run_as_well():
+    plan = SimpleNamespace(name="p", month_days=8, current_date="2025-11-02")
+    run = _dated(date(2025, 11, 1))
+    ws = _sheet(build_schedule_workbook(plan, [run[3]], COMPONENTS, all_assignments=run,
+                                        day_range=(2, 2), filter_description="x"))
+    assert ws.cell(ROW_DATE, FIRST_DAY_COL).value == "02/11"          # day 2 of a run that began 1 Nov
+
+
+def test_export_without_task_dates_falls_back_to_the_plan_start():
+    plan = SimpleNamespace(name="p", month_days=8, current_date="2025-11-02")
+    ws = _sheet(build_schedule_workbook(plan, ASSIGNMENTS, COMPONENTS))   # these tasks carry no dates
+    assert ws.cell(ROW_DATE, FIRST_DAY_COL).value == "02/11"
+
+
+def test_export_keeps_every_day_the_run_uses_even_if_the_plan_was_shortened():
+    plan = SimpleNamespace(name="p", month_days=3, current_date="2025-11-01")   # run reaches day 5
+    ws = _sheet(build_schedule_workbook(plan, ASSIGNMENTS, COMPONENTS))
+    assert _day_headers(ws) == [1, 2, 3, 4, 5]
+    a1 = next(r for r in _data_rows(ws) if ws.cell(r, 2).value == "100")
+    assert ws.cell(a1, FIRST_DAY_COL + 4).value == 200                       # day-5 production is not cut off
