@@ -1,8 +1,38 @@
+from datetime import timezone
+
 from sqlalchemy import Column, String, Integer, Float, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.types import TypeDecorator
 import uuid
 from app.database import Base
+
+
+class UTCDateTime(TypeDecorator):
+    """DateTime(timezone=True) that reads back the same on SQLite as on PostgreSQL.
+
+    SQLite has no time-zone type: it keeps the wall-clock text and returns naive
+    datetimes. The API would then send them without a "Z" and a browser would
+    read them as *local* time, shifting every run time by the viewer's UTC
+    offset. On SQLite values are stored as naive UTC and returned UTC-aware;
+    PostgreSQL already returns aware values, so nothing changes there.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def __init__(self):
+        super().__init__(timezone=True)
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and dialect.name == "sqlite" and value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
 
 
 def generate_uuid():
@@ -27,8 +57,8 @@ class Plan(Base):
     n_generations = Column(Integer, default=60)
     mutation_rate = Column(Float, default=0.3)
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(UTCDateTime(), server_default=func.now())
+    updated_at = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
 
     # Relationships
     components = relationship("Component", back_populates="plan", cascade="all, delete-orphan")
@@ -91,7 +121,7 @@ class Run(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     plan_id = Column(String, ForeignKey("plans.id"), nullable=False)
     run_name = Column(String, nullable=True)   # e.g. "Run #1" or timestamp label
-    run_at = Column(DateTime(timezone=True), server_default=func.now())
+    run_at = Column(UTCDateTime(), server_default=func.now())
     score = Column(Float, nullable=True)
     status = Column(String, default="completed")  # "completed" | "failed"
     unmet = Column(JSON, nullable=True)        # unmet quantities

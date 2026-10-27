@@ -1,4 +1,5 @@
 # main.py
+import os
 from datetime import date, time
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,9 +13,13 @@ from app.api_v1 import router as api_router
 app = FastAPI(title="TaskAlign API")
 
 # CORS for frontend
+# CORS_ORIGINS="http://a,http://b" limits which pages may call the API (the
+# portable build sets it to its own page). Unset keeps the open default.
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with frontend URL in production
+    allow_origins=_cors_origins or ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

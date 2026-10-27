@@ -70,3 +70,7 @@ pnpm-debug.log*
 
 # ===== Windows installer =====
 .pg_superuser_password.txt
+# ===== Portable Windows build (see portable/README.md) =====
+portable/cache/
+portable/build/
+portable/dist/
